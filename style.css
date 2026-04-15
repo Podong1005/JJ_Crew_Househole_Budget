@@ -35,6 +35,13 @@ body {
   padding: 32px 0 48px;
 }
 
+.page-shell--auth {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .hero {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -227,6 +234,10 @@ button:hover {
   margin-bottom: 24px;
 }
 
+.protected-content {
+  width: 100%;
+}
+
 .auth-panel__intro,
 .household-panel__header {
   display: flex;
@@ -234,6 +245,12 @@ button:hover {
   gap: 20px;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.auth-panel {
+  width: min(720px, 100%);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .auth-panel__description {

@@ -13,6 +13,7 @@ const supabase = hasSupabaseConfig
 
 const elements = {
   appShell: document.getElementById("appShell"),
+  protectedContent: document.getElementById("protectedContent"),
   authPanel: document.getElementById("authPanel"),
   authForm: document.getElementById("authForm"),
   authTitle: document.getElementById("authTitle"),
@@ -108,30 +109,35 @@ async function initializeSupabaseSession() {
 
 function renderSetupRequired() {
   elements.appShell.classList.add("is-setup");
+  elements.appShell.classList.add("page-shell--auth");
+  elements.protectedContent.classList.add("is-hidden");
   elements.authPanel.classList.remove("is-hidden");
-  elements.dashboardState.classList.remove("is-hidden");
-  elements.setupGuide.classList.remove("is-hidden");
+  elements.dashboardState.classList.add("is-hidden");
+  elements.setupGuide.classList.add("is-hidden");
   elements.authTitle.textContent = "공유형 가계부 설정이 필요해요";
-  elements.authDescription.textContent = "Supabase 연결 정보만 넣으면 부부가 각자 폰과 컴퓨터에서 같은 가계부를 사용할 수 있어요.";
+  elements.authDescription.innerHTML = '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
   elements.authForm.classList.add("is-hidden");
   elements.authToggle.classList.add("is-hidden");
   elements.householdPanel.classList.add("is-hidden");
-  renderFromLocalState();
+  elements.authError.textContent = "설정이 끝나면 로그인 후 같은 가계부를 함께 사용할 수 있어요.";
 }
 
 function renderPreLoginState() {
   elements.appShell.classList.remove("is-setup");
+  elements.appShell.classList.add("page-shell--auth");
+  elements.protectedContent.classList.add("is-hidden");
   elements.authPanel.classList.remove("is-hidden");
   elements.authForm.classList.remove("is-hidden");
   elements.authToggle.classList.remove("is-hidden");
-  elements.dashboardState.classList.remove("is-hidden");
+  elements.dashboardState.classList.add("is-hidden");
   elements.setupGuide.classList.add("is-hidden");
   elements.householdPanel.classList.add("is-hidden");
   elements.authError.textContent = "";
-  renderPlaceholderDashboard("같이 쓰려면 먼저 로그인해 주세요.");
 }
 
 function renderWaitingForHousehold() {
+  elements.appShell.classList.remove("page-shell--auth");
+  elements.protectedContent.classList.remove("is-hidden");
   elements.authPanel.classList.add("is-hidden");
   elements.dashboardState.classList.remove("is-hidden");
   elements.householdPanel.classList.remove("is-hidden");
@@ -143,6 +149,8 @@ function renderWaitingForHousehold() {
 
 function renderActiveDashboard() {
   elements.authPanel.classList.add("is-hidden");
+  elements.appShell.classList.remove("page-shell--auth");
+  elements.protectedContent.classList.remove("is-hidden");
   elements.dashboardState.classList.add("is-hidden");
   elements.householdPanel.classList.remove("is-hidden");
   elements.householdName.textContent = appState.household?.name || "우리집 가계부";
@@ -438,28 +446,6 @@ async function handleFixedExpenseDelete(event) {
   }
 
   await loadBudgetData();
-}
-
-function renderFromLocalState() {
-  const saved = loadLocalState();
-  appState.fixedExpenses = saved.fixedExpenses;
-  appState.transactions = saved.transactions;
-  render();
-}
-
-function loadLocalState() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
-    return structuredClone(defaultState);
-  }
-
-  try {
-    return JSON.parse(saved);
-  } catch {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultState));
-    return structuredClone(defaultState);
-  }
 }
 
 function renderPlaceholderDashboard(message) {

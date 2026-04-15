@@ -7,18 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="page-shell" id="appShell">
-    <header class="hero">
-      <div class="hero__content">
-        <p class="eyebrow">Household Budget Planner</p>
-        <h1>아내와 함께 보는<br>우리집 가계부</h1>
-        <p class="hero__description">
-          고정비와 일상 지출을 함께 기록하고, 월별 소비와 저축 흐름을 한눈에 확인해보세요.
-        </p>
-      </div>
-      <div class="hero__summary" id="summaryCards"></div>
-    </header>
-
+  <div class="page-shell page-shell--auth" id="appShell">
     <section class="panel panel--wide auth-panel" id="authPanel">
       <div class="auth-panel__intro">
         <div>
@@ -48,150 +37,163 @@
       <p class="error-text" id="authError"></p>
     </section>
 
-    <section class="panel panel--wide state-panel is-hidden" id="dashboardState">
-      <div class="section-heading">
-        <div>
-          <p class="section-heading__eyebrow">Setup</p>
-          <h2>공동 사용 준비</h2>
+    <div class="protected-content is-hidden" id="protectedContent">
+      <header class="hero">
+        <div class="hero__content">
+          <p class="eyebrow">Household Budget Planner</p>
+          <h1>아내와 함께 보는<br>우리집 가계부</h1>
+          <p class="hero__description">
+            고정비와 일상 지출을 함께 기록하고, 월별 소비와 저축 흐름을 한눈에 확인해보세요.
+          </p>
         </div>
-      </div>
-      <div class="setup-guide is-hidden" id="setupGuide">
-        <p>먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.</p>
-        <p>그 다음 이 페이지를 웹에 올리면 아내와 내가 각자 휴대폰이나 컴퓨터에서 같은 주소로 접속할 수 있습니다.</p>
-      </div>
-    </section>
+        <div class="hero__summary" id="summaryCards"></div>
+      </header>
 
-    <section class="panel panel--wide household-panel is-hidden" id="householdPanel">
-      <div class="household-panel__header">
-        <div>
-          <p class="section-heading__eyebrow">Household</p>
-          <h2 id="householdName">우리집 가계부</h2>
-          <p class="subtext">초대 코드: <strong id="householdInviteCode">-</strong></p>
-        </div>
-        <div class="household-panel__actions">
-          <div class="mini-card">
-            <span class="mini-card__label">로그인 계정</span>
-            <strong id="householdUser">로그인되지 않음</strong>
-          </div>
-          <button type="button" class="ghost-button" id="refreshButton">새로고침</button>
-          <button type="button" class="ghost-button" id="signOutButton">로그아웃</button>
-        </div>
-      </div>
-
-      <div class="household-panel__grid">
-        <form id="createHouseholdForm" class="entry-form household-form">
-          <label>
-            새 가계부 이름
-            <input type="text" name="householdName" placeholder="예: 우리집 2026 가계부">
-          </label>
-          <button type="submit">새 가계부 만들기</button>
-        </form>
-
-        <form id="joinHouseholdForm" class="entry-form household-form">
-          <label>
-            초대 코드
-            <input type="text" name="inviteCode" placeholder="예: 8자리 코드">
-          </label>
-          <button type="submit">초대 코드로 참여</button>
-        </form>
-      </div>
-
-      <p class="subtext" id="householdMessage"></p>
-    </section>
-
-    <main class="dashboard">
-      <section class="panel panel--wide">
+      <section class="panel panel--wide state-panel is-hidden" id="dashboardState">
         <div class="section-heading">
           <div>
-            <p class="section-heading__eyebrow">Quick Overview</p>
-            <h2>월별 소비와 저축 흐름</h2>
+            <p class="section-heading__eyebrow">Setup</p>
+            <h2>공동 사용 준비</h2>
           </div>
         </div>
-        <div class="chart-card">
-          <div class="chart-legend">
-            <span><i class="legend-swatch legend-swatch--expense"></i>소비</span>
-            <span><i class="legend-swatch legend-swatch--saving"></i>저축</span>
-          </div>
-          <canvas id="monthlyChart" height="280" aria-label="월별 소비 및 저축 그래프"></canvas>
+        <div class="setup-guide is-hidden" id="setupGuide">
+          <p>먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.</p>
+          <p>그 다음 이 페이지를 웹에 올리면 아내와 내가 각자 휴대폰이나 컴퓨터에서 같은 주소로 접속할 수 있습니다.</p>
         </div>
       </section>
 
-      <section class="panel">
-        <div class="section-heading">
+      <section class="panel panel--wide household-panel is-hidden" id="householdPanel">
+        <div class="household-panel__header">
           <div>
-            <p class="section-heading__eyebrow">Fixed Costs</p>
-            <h2>고정비 기록</h2>
+            <p class="section-heading__eyebrow">Household</p>
+            <h2 id="householdName">우리집 가계부</h2>
+            <p class="subtext">초대 코드: <strong id="householdInviteCode">-</strong></p>
+          </div>
+          <div class="household-panel__actions">
+            <div class="mini-card">
+              <span class="mini-card__label">로그인 계정</span>
+              <strong id="householdUser">로그인되지 않음</strong>
+            </div>
+            <button type="button" class="ghost-button" id="refreshButton">새로고침</button>
+            <button type="button" class="ghost-button" id="signOutButton">로그아웃</button>
           </div>
         </div>
-        <form id="fixedExpenseForm" class="entry-form">
-          <label>
-            항목명
-            <input type="text" name="name" placeholder="예: 월세, 통신비" required>
-          </label>
-          <label>
-            월 금액
-            <input type="number" name="amount" min="0" step="1000" placeholder="예: 850000" required>
-          </label>
-          <button type="submit">고정비 추가</button>
-        </form>
-        <div id="fixedExpenseList" class="stack-list"></div>
+
+        <div class="household-panel__grid">
+          <form id="createHouseholdForm" class="entry-form household-form">
+            <label>
+              새 가계부 이름
+              <input type="text" name="householdName" placeholder="예: 우리집 2026 가계부">
+            </label>
+            <button type="submit">새 가계부 만들기</button>
+          </form>
+
+          <form id="joinHouseholdForm" class="entry-form household-form">
+            <label>
+              초대 코드
+              <input type="text" name="inviteCode" placeholder="예: 8자리 코드">
+            </label>
+            <button type="submit">초대 코드로 참여</button>
+          </form>
+        </div>
+
+        <p class="subtext" id="householdMessage"></p>
       </section>
 
-      <section class="panel">
-        <div class="section-heading">
-          <div>
-            <p class="section-heading__eyebrow">Transactions</p>
-            <h2>수입 / 지출 기록</h2>
+      <main class="dashboard">
+        <section class="panel panel--wide">
+          <div class="section-heading">
+            <div>
+              <p class="section-heading__eyebrow">Quick Overview</p>
+              <h2>월별 소비와 저축 흐름</h2>
+            </div>
           </div>
-        </div>
-        <form id="transactionForm" class="entry-form">
-          <label>
-            날짜
-            <input type="date" name="date" required>
-          </label>
-          <label>
-            구분
-            <select name="type" required>
-              <option value="income">수입</option>
-              <option value="expense">지출</option>
-            </select>
-          </label>
-          <label>
-            카테고리
-            <input type="text" name="category" placeholder="예: 식비, 급여" required>
-          </label>
-          <label>
-            금액
-            <input type="number" name="amount" min="0" step="1000" placeholder="예: 50000" required>
-          </label>
-          <label>
-            메모
-            <input type="text" name="note" placeholder="선택 사항">
-          </label>
-          <button type="submit">내역 저장</button>
-        </form>
-      </section>
+          <div class="chart-card">
+            <div class="chart-legend">
+              <span><i class="legend-swatch legend-swatch--expense"></i>소비</span>
+              <span><i class="legend-swatch legend-swatch--saving"></i>저축</span>
+            </div>
+            <canvas id="monthlyChart" height="280" aria-label="월별 소비 및 저축 그래프"></canvas>
+          </div>
+        </section>
 
-      <section class="panel">
-        <div class="section-heading">
-          <div>
-            <p class="section-heading__eyebrow">Monthly Snapshot</p>
-            <h2>이번 달 요약</h2>
+        <section class="panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-heading__eyebrow">Fixed Costs</p>
+              <h2>고정비 기록</h2>
+            </div>
           </div>
-        </div>
-        <div id="monthlyBreakdown" class="insight-grid"></div>
-      </section>
+          <form id="fixedExpenseForm" class="entry-form">
+            <label>
+              항목명
+              <input type="text" name="name" placeholder="예: 월세, 통신비" required>
+            </label>
+            <label>
+              월 금액
+              <input type="number" name="amount" min="0" step="1000" placeholder="예: 850000" required>
+            </label>
+            <button type="submit">고정비 추가</button>
+          </form>
+          <div id="fixedExpenseList" class="stack-list"></div>
+        </section>
 
-      <section class="panel panel--wide">
-        <div class="section-heading">
-          <div>
-            <p class="section-heading__eyebrow">Recent Activity</p>
-            <h2>최근 수입 / 지출 내역</h2>
+        <section class="panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-heading__eyebrow">Transactions</p>
+              <h2>수입 / 지출 기록</h2>
+            </div>
           </div>
-        </div>
-        <div id="transactionList" class="table-card"></div>
-      </section>
-    </main>
+          <form id="transactionForm" class="entry-form">
+            <label>
+              날짜
+              <input type="date" name="date" required>
+            </label>
+            <label>
+              구분
+              <select name="type" required>
+                <option value="income">수입</option>
+                <option value="expense">지출</option>
+              </select>
+            </label>
+            <label>
+              카테고리
+              <input type="text" name="category" placeholder="예: 식비, 급여" required>
+            </label>
+            <label>
+              금액
+              <input type="number" name="amount" min="0" step="1000" placeholder="예: 50000" required>
+            </label>
+            <label>
+              메모
+              <input type="text" name="note" placeholder="선택 사항">
+            </label>
+            <button type="submit">내역 저장</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="section-heading">
+            <div>
+              <p class="section-heading__eyebrow">Monthly Snapshot</p>
+              <h2>이번 달 요약</h2>
+            </div>
+          </div>
+          <div id="monthlyBreakdown" class="insight-grid"></div>
+        </section>
+
+        <section class="panel panel--wide">
+          <div class="section-heading">
+            <div>
+              <p class="section-heading__eyebrow">Recent Activity</p>
+              <h2>최근 수입 / 지출 내역</h2>
+            </div>
+          </div>
+          <div id="transactionList" class="table-card"></div>
+        </section>
+      </main>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
