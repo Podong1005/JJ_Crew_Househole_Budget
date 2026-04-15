@@ -19,8 +19,10 @@ const elements = {
   authTitle: document.getElementById("authTitle"),
   authDescription: document.getElementById("authDescription"),
   authSubmit: document.getElementById("authSubmit"),
+  authModeStatus: document.getElementById("authModeStatus"),
   authToggle: document.getElementById("authToggle"),
   authError: document.getElementById("authError"),
+  confirmPasswordField: document.getElementById("confirmPasswordField"),
   dashboardState: document.getElementById("dashboardState"),
   setupGuide: document.getElementById("setupGuide"),
   householdPanel: document.getElementById("householdPanel"),
@@ -174,6 +176,7 @@ async function handleAuthSubmit(event) {
   const formData = new FormData(event.currentTarget);
   const email = formData.get("email").toString().trim();
   const password = formData.get("password").toString();
+  const confirmPassword = formData.get("confirmPassword")?.toString() || "";
 
   if (!email || !password) {
     elements.authError.textContent = "이메일과 비밀번호를 입력해 주세요.";
@@ -188,6 +191,11 @@ async function handleAuthSubmit(event) {
     return;
   }
 
+  if (password !== confirmPassword) {
+    elements.authError.textContent = "비밀번호 확인이 일치하지 않아요.";
+    return;
+  }
+
   const { error } = await supabase.auth.signUp({ email, password });
   elements.authError.textContent = error
     ? error.message
@@ -197,6 +205,7 @@ async function handleAuthSubmit(event) {
 function toggleAuthMode() {
   appState.authMode = appState.authMode === "signin" ? "signup" : "signin";
   elements.authError.textContent = "";
+  elements.authForm.reset();
   renderAuthMode();
 }
 
@@ -207,7 +216,10 @@ function renderAuthMode() {
     ? "각자 로그인한 뒤 같은 가계부에 연결하면 어디서든 같은 데이터를 볼 수 있어요."
     : "계정을 만든 뒤 한 분이 가계부를 만들고, 다른 분은 초대 코드로 참여하세요.";
   elements.authSubmit.textContent = isSignIn ? "로그인" : "회원가입";
+  elements.authModeStatus.textContent = `현재 모드: ${isSignIn ? "로그인" : "회원가입"}`;
   elements.authToggle.textContent = isSignIn ? "처음이라면 회원가입" : "이미 계정이 있다면 로그인";
+  elements.confirmPasswordField.classList.toggle("is-hidden", isSignIn);
+  elements.confirmPasswordField.querySelector("input").toggleAttribute("required", !isSignIn);
 }
 
 async function handleSignOut() {

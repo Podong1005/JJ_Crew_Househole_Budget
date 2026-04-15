@@ -282,10 +282,71 @@ button:hover {
   align-items: end;
 }
 
+.profile-picker {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.profile-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-card {
+  grid-column: auto;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 250, 242, 0.92);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.profile-card__avatar {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(201, 111, 59, 0.15);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.profile-card__name {
+  font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.profile-card__hint,
+.table-meta {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .error-text {
   min-height: 20px;
   margin: 12px 0 0;
   color: var(--expense);
+}
+
+.mode-text {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
 }
 
 .setup-guide {
@@ -514,7 +575,8 @@ tbody tr:hover {
   .household-panel__header,
   .household-panel__grid,
   .auth-form,
-  .household-form {
+  .household-form,
+  .profile-list {
     grid-template-columns: 1fr;
     display: grid;
   }

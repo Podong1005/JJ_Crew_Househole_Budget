@@ -11,29 +11,33 @@
     <section class="panel panel--wide auth-panel" id="authPanel">
       <div class="auth-panel__intro">
         <div>
-          <p class="section-heading__eyebrow">Shared Access</p>
-          <h2 id="authTitle">부부 공동 가계부 로그인</h2>
-          <p class="subtext auth-panel__description" id="authDescription"></p>
+          <p class="section-heading__eyebrow">User Select</p>
+          <h2 id="authTitle">사용자를 선택해 주세요</h2>
+          <p class="subtext auth-panel__description" id="authDescription">
+            처음 방문했다면 내 계정을 만들고, 이전에 방문했다면 내 계정을 눌러 바로 들어갈 수 있어요.
+          </p>
         </div>
         <div class="auth-panel__status">
-          <span class="badge">공유형</span>
-          <p class="subtext">PC와 휴대폰에서 같은 데이터 동기화</p>
+          <span class="badge">간편 접속</span>
+          <p class="subtext">이 브라우저에 저장된 계정을 선택해서 입장</p>
         </div>
       </div>
 
       <form id="authForm" class="entry-form auth-form">
         <label>
-          이메일
-          <input type="email" name="email" placeholder="예: couple@example.com" required>
+          내 이름
+          <input type="text" name="profileName" placeholder="예: 민수, 지연" required>
         </label>
-        <label>
-          비밀번호
-          <input type="password" name="password" placeholder="8자 이상" required>
-        </label>
-        <button type="submit" id="authSubmit">로그인</button>
+        <button type="submit" id="authSubmit">내 계정 만들기</button>
       </form>
 
-      <button type="button" class="ghost-button" id="authToggle">처음이라면 회원가입</button>
+      <div class="profile-picker">
+        <div class="profile-picker__header">
+          <p class="mode-text" id="authModeStatus">기존 계정 선택</p>
+        </div>
+        <div class="profile-list" id="profileList"></div>
+        <p class="empty-state is-hidden" id="profileEmptyState">아직 만들어진 계정이 없어요. 위에서 내 계정을 먼저 만들어 주세요.</p>
+      </div>
       <p class="error-text" id="authError"></p>
     </section>
 
@@ -65,36 +69,18 @@
       <section class="panel panel--wide household-panel is-hidden" id="householdPanel">
         <div class="household-panel__header">
           <div>
-            <p class="section-heading__eyebrow">Household</p>
+            <p class="section-heading__eyebrow">Current User</p>
             <h2 id="householdName">우리집 가계부</h2>
-            <p class="subtext">초대 코드: <strong id="householdInviteCode">-</strong></p>
+            <p class="subtext">현재 접속 사용자: <strong id="householdInviteCode">-</strong></p>
           </div>
           <div class="household-panel__actions">
             <div class="mini-card">
-              <span class="mini-card__label">로그인 계정</span>
+              <span class="mini-card__label">선택된 계정</span>
               <strong id="householdUser">로그인되지 않음</strong>
             </div>
-            <button type="button" class="ghost-button" id="refreshButton">새로고침</button>
-            <button type="button" class="ghost-button" id="signOutButton">로그아웃</button>
+            <button type="button" class="ghost-button" id="refreshButton">계정 목록으로</button>
+            <button type="button" class="ghost-button is-hidden" id="signOutButton">로그아웃</button>
           </div>
-        </div>
-
-        <div class="household-panel__grid">
-          <form id="createHouseholdForm" class="entry-form household-form">
-            <label>
-              새 가계부 이름
-              <input type="text" name="householdName" placeholder="예: 우리집 2026 가계부">
-            </label>
-            <button type="submit">새 가계부 만들기</button>
-          </form>
-
-          <form id="joinHouseholdForm" class="entry-form household-form">
-            <label>
-              초대 코드
-              <input type="text" name="inviteCode" placeholder="예: 8자리 코드">
-            </label>
-            <button type="submit">초대 코드로 참여</button>
-          </form>
         </div>
 
         <p class="subtext" id="householdMessage"></p>
@@ -196,8 +182,6 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script src="selector-app.js"></script>
 </body>
 </html>
