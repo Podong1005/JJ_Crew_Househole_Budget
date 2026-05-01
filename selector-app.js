@@ -39,6 +39,7 @@ initialize();
 
 function initialize() {
   elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
+  elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
   elements.profileList.addEventListener("click", handleProfileSelection);
   elements.refreshButton.addEventListener("click", returnToProfileSelect);
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
@@ -68,8 +69,12 @@ function loadBudgetState() {
 
   try {
     const parsed = JSON.parse(saved);
-    appState.fixedExpenses = Array.isArray(parsed.fixedExpenses) ? parsed.fixedExpenses : [];
+    const loadedFixedExpenses = Array.isArray(parsed.fixedExpenses) ? parsed.fixedExpenses : [];
+    appState.fixedExpenses = loadedFixedExpenses.map(normalizeFixedExpense);
     appState.transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+    if (loadedFixedExpenses.some((item) => !item.date || item.note === undefined)) {
+      saveBudgetState();
+    }
   } catch {
     appState.fixedExpenses = [];
     appState.transactions = [];
@@ -149,20 +154,25 @@ function handleFixedExpenseSubmit(event) {
   }
 
   const formData = new FormData(event.currentTarget);
+  const date = formData.get("date").toString();
   const name = formData.get("name").toString().trim();
   const amount = Number(formData.get("amount"));
-  if (!name || amount <= 0) {
+  const note = formData.get("note").toString().trim();
+  if (!isValidDateString(date) || !name || amount <= 0) {
     return;
   }
 
   appState.fixedExpenses.unshift({
     id: crypto.randomUUID(),
+    date,
     name,
     amount,
+    note,
     createdBy: appState.activeProfile.name,
     createdAt: new Date().toISOString()
   });
   event.currentTarget.reset();
+  elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
   saveBudgetState();
   render();
 }
@@ -216,15 +226,15 @@ function render() {
 }
 
 function renderSummaryCards() {
+  const monthKey = getCurrentMonthKey();
   const monthly = getCurrentMonthSummary();
-  const fixedTotal = getFixedExpenseTotal();
-  const totalExpense = monthly.expense + fixedTotal;
-  const savings = monthly.income - totalExpense;
+  const fixedTotal = getFixedExpenseTotalForMonth(monthKey);
+  const savings = monthly.income - monthly.expense;
   const savingsRate = monthly.income > 0 ? Math.round((savings / monthly.income) * 100) : 0;
 
   const cards = [
     { title: "이번 달 수입", value: formatCurrency(monthly.income), className: "amount amount--income", subtext: "등록된 수입 합계" },
-    { title: "이번 달 지출", value: formatCurrency(totalExpense), className: "amount amount--expense", subtext: `고정비 ${formatCurrency(fixedTotal)} 포함` },
+    { title: "이번 달 지출", value: formatCurrency(monthly.expense), className: "amount amount--expense", subtext: `고정비 ${formatCurrency(fixedTotal)} 포함` },
     { title: "예상 저축", value: formatCurrency(savings), className: `amount ${savings >= 0 ? "amount--saving" : "amount--expense"}`, subtext: `저축률 ${savingsRate}%` },
     { title: "작성자", value: appState.activeProfile?.name || "미선택", className: "amount", subtext: "새 내역에 저장될 사용자" }
   ];
@@ -239,17 +249,18 @@ function renderSummaryCards() {
 }
 
 function renderMonthlyBreakdown() {
+  const monthKey = getCurrentMonthKey();
   const current = getCurrentMonthSummary();
-  const fixedTotal = getFixedExpenseTotal();
-  const totalExpense = current.expense + fixedTotal;
-  const savings = current.income - totalExpense;
+  const transactionSummary = getCurrentMonthTransactionSummary();
+  const fixedTotal = getFixedExpenseTotalForMonth(monthKey);
+  const savings = current.income - current.expense;
   const average = getMonthlyAverageExpense();
 
   const cards = [
-    { title: "고정비 합계", value: formatCurrency(fixedTotal), helper: "매월 반복 비용" },
-    { title: "변동 지출", value: formatCurrency(current.expense), helper: "이번 달 일반 지출" },
+    { title: "고정비 합계", value: formatCurrency(fixedTotal), helper: "이번 달 반복 반영 비용" },
+    { title: "변동 지출", value: formatCurrency(transactionSummary.expense), helper: "이번 달 일반 지출" },
     { title: "월 평균 지출", value: formatCurrency(average), helper: "최근 6개월 기준" },
-    { title: "총 지출", value: formatCurrency(totalExpense), helper: "고정비 + 변동 지출" },
+    { title: "총 지출", value: formatCurrency(current.expense), helper: "고정비 + 변동 지출" },
     { title: "총 수입", value: formatCurrency(current.income), helper: "이번 달 수입 합계" },
     { title: "남은 금액", value: formatCurrency(savings), helper: "수입 - 총 지출" }
   ];
@@ -270,12 +281,13 @@ function renderFixedExpenses() {
   }
 
   elements.fixedExpenseList.innerHTML = [...appState.fixedExpenses]
-    .sort((a, b) => Number(b.amount) - Number(a.amount))
+    .sort((a, b) => `${b.date}${b.createdAt || ""}`.localeCompare(`${a.date}${a.createdAt || ""}`))
     .map((item) => `
       <article class="fixed-item">
         <div class="fixed-item__meta">
           <h3>${escapeHtml(item.name)}</h3>
-          <p>${escapeHtml(item.createdBy || "미지정")} 등록</p>
+          <p>${escapeHtml(item.date)}부터 매월 반복 · ${escapeHtml(item.createdBy || "미지정")} 등록</p>
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
         </div>
         <div class="fixed-item__actions">
           <div class="amount amount--expense">${formatCurrency(item.amount)}</div>
@@ -286,18 +298,18 @@ function renderFixedExpenses() {
 }
 
 function renderTransactions() {
-  const sorted = [...appState.transactions]
+  const sorted = [...appState.transactions, ...getFixedExpenseOccurrencesThroughCurrentMonth()]
     .sort((a, b) => `${b.date}${b.createdAt || ""}`.localeCompare(`${a.date}${a.createdAt || ""}`));
 
   if (sorted.length === 0) {
-    elements.transactionList.innerHTML = '<div class="empty-state">아직 기록된 수입 / 지출 내역이 없습니다.</div>';
+    elements.transactionList.innerHTML = '<div class="empty-state">아직 기록된 수입 / 지출 / 고정비 내역이 없습니다.</div>';
     return;
   }
 
   const rows = sorted.map((entry) => `
     <tr>
       <td>${entry.date}</td>
-      <td><span class="pill pill--${entry.type}">${entry.type === "income" ? "수입" : "지출"}</span></td>
+      <td><span class="pill pill--${entry.type}">${getTypeLabel(entry.type)}</span></td>
       <td>${escapeHtml(entry.category)}</td>
       <td>${escapeHtml(entry.createdBy || "미지정")}</td>
       <td>${escapeHtml(entry.note || "-")}</td>
@@ -324,22 +336,21 @@ function renderTransactions() {
 
 function renderVisibleCharts() {
   if (appState.activeTab === "monthly") {
-    renderGroupedBarChart(elements.monthlyChart, getMonthlyTrend(), { includeFixedExpense: true });
+    renderGroupedBarChart(elements.monthlyChart, getMonthlyTrend());
   }
   if (appState.activeTab === "daily") {
-    renderGroupedBarChart(elements.dailyChart, getDailyTrend(), { includeFixedExpense: false });
+    renderGroupedBarChart(elements.dailyChart, getDailyTrend());
   }
 }
 
-function renderGroupedBarChart(canvas, chartData, options = {}) {
+function renderGroupedBarChart(canvas, chartData) {
   if (!canvas) {
     return;
   }
 
   const context = canvas.getContext("2d");
-  const fixedTotal = options.includeFixedExpense ? getFixedExpenseTotal() : 0;
   const incomes = chartData.map((item) => item.income);
-  const expenses = chartData.map((item) => item.expense + fixedTotal);
+  const expenses = chartData.map((item) => item.expense);
   const maxValue = Math.max(...incomes, ...expenses, 100000);
 
   const width = Math.max(canvas.clientWidth, 320) * window.devicePixelRatio;
@@ -387,16 +398,23 @@ function renderGroupedBarChart(canvas, chartData, options = {}) {
 }
 
 function getCurrentMonthSummary() {
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthKey = getCurrentMonthKey();
+  const transactionSummary = getCurrentMonthTransactionSummary();
+  return {
+    income: transactionSummary.income,
+    expense: transactionSummary.expense + getFixedExpenseTotalForMonth(monthKey)
+  };
+}
+
+function getCurrentMonthTransactionSummary() {
+  const monthKey = getCurrentMonthKey();
   const currentTransactions = appState.transactions.filter((entry) => entry.date.startsWith(monthKey));
   return summarizeTransactions(currentTransactions);
 }
 
 function getMonthlyAverageExpense() {
   const trend = getMonthlyTrend();
-  const fixedTotal = getFixedExpenseTotal();
-  const totals = trend.map((item) => item.expense + fixedTotal);
+  const totals = trend.map((item) => item.expense);
   return totals.length ? totals.reduce((sum, value) => sum + value, 0) / totals.length : 0;
 }
 
@@ -407,10 +425,12 @@ function getMonthlyTrend() {
     const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     const monthTransactions = appState.transactions.filter((entry) => entry.date.startsWith(key));
+    const summary = summarizeTransactions(monthTransactions);
     months.push({
       key,
       label: `${date.getMonth() + 1}월`,
-      ...summarizeTransactions(monthTransactions)
+      income: summary.income,
+      expense: summary.expense + getFixedExpenseTotalForMonth(key)
     });
   }
   return months;
@@ -426,10 +446,12 @@ function getDailyTrend() {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const dailyTransactions = appState.transactions.filter((entry) => entry.date === key);
+    const summary = summarizeTransactions(dailyTransactions);
     days.push({
       key,
       label: String(day),
-      ...summarizeTransactions(dailyTransactions)
+      income: summary.income,
+      expense: summary.expense + getFixedExpenseTotalForDate(key)
     });
   }
   return days;
@@ -446,8 +468,97 @@ function summarizeTransactions(transactions) {
   };
 }
 
-function getFixedExpenseTotal() {
-  return appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+function getFixedExpenseTotalForMonth(monthKey) {
+  return appState.fixedExpenses
+    .filter((item) => shouldApplyFixedExpenseToMonth(item, monthKey))
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+}
+
+function getFixedExpenseTotalForDate(dateKey) {
+  return getFixedExpenseOccurrencesForMonth(dateKey.slice(0, 7))
+    .filter((item) => item.date === dateKey)
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+}
+
+function getFixedExpenseOccurrencesThroughCurrentMonth() {
+  const occurrences = [];
+  const currentMonthKey = getCurrentMonthKey();
+
+  appState.fixedExpenses.forEach((item) => {
+    let monthKey = item.date.slice(0, 7);
+    while (monthKey <= currentMonthKey) {
+      occurrences.push(createFixedExpenseOccurrence(item, monthKey));
+      monthKey = getNextMonthKey(monthKey);
+    }
+  });
+
+  return occurrences;
+}
+
+function getFixedExpenseOccurrencesForMonth(monthKey) {
+  return appState.fixedExpenses
+    .filter((item) => shouldApplyFixedExpenseToMonth(item, monthKey))
+    .map((item) => createFixedExpenseOccurrence(item, monthKey));
+}
+
+function shouldApplyFixedExpenseToMonth(item, monthKey) {
+  return isValidDateString(item.date) && item.date.slice(0, 7) <= monthKey;
+}
+
+function createFixedExpenseOccurrence(item, monthKey) {
+  const occurrenceDay = Math.min(Number(item.date.slice(8, 10)), getDaysInMonth(monthKey));
+  return {
+    id: `${item.id}-${monthKey}`,
+    date: `${monthKey}-${String(occurrenceDay).padStart(2, "0")}`,
+    type: "fixed",
+    category: item.name,
+    amount: Number(item.amount),
+    note: item.note || "",
+    createdBy: item.createdBy || "미지정",
+    createdAt: item.createdAt || item.date
+  };
+}
+
+function getCurrentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getNextMonthKey(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const nextMonth = new Date(year, month, 1);
+  return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDaysInMonth(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function normalizeFixedExpense(item) {
+  return {
+    id: item.id || crypto.randomUUID(),
+    date: isValidDateString(item.date) ? item.date : getTodayString(),
+    name: item.name || "고정비",
+    amount: Number(item.amount) || 0,
+    note: item.note || "",
+    createdBy: item.createdBy || "미지정",
+    createdAt: item.createdAt || new Date().toISOString()
+  };
+}
+
+function isValidDateString(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+}
+
+function getTypeLabel(type) {
+  if (type === "income") {
+    return "수입";
+  }
+  if (type === "fixed") {
+    return "고정비";
+  }
+  return "지출";
 }
 
 function roundRect(context, x, y, width, height, radius) {

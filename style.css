@@ -491,6 +491,11 @@ tbody tr:hover {
   color: var(--expense);
 }
 
+.pill--fixed {
+  background: #fef3c7;
+  color: #b45309;
+}
+
 .empty-state {
   padding: 28px 16px;
   text-align: center;
