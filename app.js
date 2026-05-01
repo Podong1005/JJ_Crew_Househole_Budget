@@ -133,6 +133,7 @@ async function handleBudgetAccess(event) {
 
   elements.authSubmit.disabled = true;
   elements.authSubmit.textContent = "연결 중...";
+  elements.authModeStatus.textContent = "가계부 코드와 PIN을 확인하는 중...";
   elements.authError.textContent = "";
 
   try {
@@ -141,15 +142,19 @@ async function handleBudgetAccess(event) {
     appState.householdKey = householdKey;
     localStorage.setItem(SESSION_KEY, JSON.stringify({ householdCode, householdKey }));
     await migrateLegacyLocalBudgetData();
-    await loadBudgetData();
-    setupRealtime();
-    startPolling();
-    elements.authForm.reset();
+    elements.authModeStatus.textContent = "공유 가계부 데이터를 불러오는 중...";
+    const loaded = await loadBudgetData();
+    if (loaded) {
+      setupRealtime();
+      startPolling();
+      elements.authForm.reset();
+    }
   } catch (error) {
     appState.householdCode = "";
     appState.householdKey = "";
     localStorage.removeItem(SESSION_KEY);
     elements.authError.textContent = `가계부 연결 중 문제가 생겼어요: ${error.message}`;
+    elements.authModeStatus.textContent = "연결 실패";
   } finally {
     elements.authSubmit.disabled = false;
     elements.authSubmit.textContent = "입장";
@@ -178,7 +183,7 @@ async function handleRefresh() {
 async function loadBudgetData() {
   if (!appState.householdKey) {
     renderAccessForm();
-    return;
+    return false;
   }
 
   const { data, error } = await supabase.rpc("get_shared_budget", {
@@ -186,18 +191,22 @@ async function loadBudgetData() {
   });
 
   if (error) {
+    localStorage.removeItem(SESSION_KEY);
     elements.householdMessage.textContent = error.message;
     if (!elements.protectedContent.classList.contains("is-hidden")) {
       renderPlaceholderDashboard("데이터를 불러오는 중 문제가 생겼어요.");
     } else {
-      elements.authError.textContent = error.message;
+      elements.authError.textContent = `Supabase 오류: ${error.message}`;
+      elements.authModeStatus.textContent = "연결 실패";
     }
-    return;
+    return false;
   }
 
-  appState.fixedExpenses = data?.fixed_expenses || [];
-  appState.transactions = data?.transactions || [];
+  const budgetData = typeof data === "string" ? JSON.parse(data) : data;
+  appState.fixedExpenses = budgetData?.fixed_expenses || [];
+  appState.transactions = budgetData?.transactions || [];
   renderDashboard();
+  return true;
 }
 
 function setupRealtime() {
