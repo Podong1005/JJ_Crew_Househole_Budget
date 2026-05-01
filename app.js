@@ -49,6 +49,7 @@ initialize();
 
 function initialize() {
   elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
+  elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
   elements.authForm.addEventListener("submit", handleBudgetAccess);
   elements.signOutButton.addEventListener("click", handleChangeBudget);
   elements.refreshButton.addEventListener("click", handleRefresh);
@@ -249,17 +250,21 @@ async function handleFixedExpenseSubmit(event) {
   }
 
   const formData = new FormData(event.currentTarget);
+  const date = String(formData.get("date") || "");
   const name = String(formData.get("name") || "").trim();
   const amount = Number(formData.get("amount"));
+  const note = String(formData.get("note") || "").trim();
 
-  if (!name || amount <= 0) {
+  if (!date || !name || amount <= 0) {
     return;
   }
 
   const { error } = await callSupabaseRpc("add_shared_fixed_expense", {
     p_household_key: appState.householdKey,
+    p_date: date,
     p_name: name,
-    p_amount: amount
+    p_amount: amount,
+    p_note: note
   });
 
   if (error) {
@@ -268,6 +273,7 @@ async function handleFixedExpenseSubmit(event) {
   }
 
   event.currentTarget.reset();
+  elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
   await loadBudgetData();
 }
 
@@ -374,8 +380,10 @@ async function migrateLegacyLocalBudgetData() {
     if (item?.name && Number(item.amount) > 0) {
       await callSupabaseRpc("add_shared_fixed_expense", {
         p_household_key: appState.householdKey,
+        p_date: item.date || getTodayString(),
         p_name: String(item.name).trim(),
-        p_amount: Number(item.amount)
+        p_amount: Number(item.amount),
+        p_note: item.note || ""
       });
     }
   }
@@ -450,7 +458,7 @@ function setActiveTab(tabName) {
 
 function renderSummaryCards() {
   const monthly = getCurrentMonthSummary();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedTotal = getFixedExpenseTotalForMonth(getCurrentMonthKey());
   const savingsRate = monthly.income > 0 ? Math.round((monthly.savings / monthly.income) * 100) : 0;
 
   const cards = [
@@ -490,12 +498,13 @@ function renderFixedExpenses() {
   }
 
   elements.fixedExpenseList.innerHTML = [...appState.fixedExpenses]
-    .sort((a, b) => Number(b.amount) - Number(a.amount))
+    .sort((a, b) => `${b.date || ""}${b.created_at || ""}`.localeCompare(`${a.date || ""}${a.created_at || ""}`))
     .map((item) => `
       <article class="fixed-item">
         <div class="fixed-item__meta">
           <h3>${escapeHtml(item.name)}</h3>
-          <p>매달 반복되는 지출</p>
+          <p>${escapeHtml(item.date || "-")}부터 매월 반복</p>
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
         </div>
         <div class="fixed-item__actions">
           <div class="amount amount--expense">${formatCurrency(item.amount)}</div>
@@ -507,7 +516,7 @@ function renderFixedExpenses() {
 
 function renderMonthlyBreakdown() {
   const current = getCurrentMonthSummary();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedTotal = getFixedExpenseTotalForMonth(getCurrentMonthKey());
   const discretionary = current.expense;
   const totalExpense = discretionary + fixedTotal;
   const average = getMonthlyAverageExpense();
@@ -559,7 +568,7 @@ function renderDailyBreakdown() {
 }
 
 function renderTransactions() {
-  const sorted = [...appState.transactions]
+  const sorted = [...appState.transactions, ...getFixedExpenseOccurrencesThroughCurrentMonth()]
     .sort((a, b) => `${b.date}${b.created_at || ""}`.localeCompare(`${a.date}${a.created_at || ""}`));
 
   if (sorted.length === 0) {
@@ -570,11 +579,14 @@ function renderTransactions() {
   const rows = sorted.slice(0, 12).map((entry) => `
     <tr>
       <td>${entry.date}</td>
-      <td><span class="pill pill--${entry.type}">${entry.type === "income" ? "수입" : "지출"}</span></td>
+      <td><span class="pill pill--${entry.type}">${getTypeLabel(entry.type)}</span></td>
       <td>${escapeHtml(entry.category)}</td>
       <td>${escapeHtml(entry.note || "-")}</td>
       <td class="amount ${entry.type === "income" ? "amount--income" : "amount--expense"}">${formatCurrency(entry.amount)}</td>
-      <td><button type="button" class="danger-button" data-transaction-delete-id="${entry.id}">삭제</button></td>
+      <td>${entry.type === "fixed"
+        ? `<button type="button" class="danger-button" data-delete-id="${entry.sourceId}">삭제</button>`
+        : `<button type="button" class="danger-button" data-transaction-delete-id="${entry.id}">삭제</button>`}
+      </td>
     </tr>
   `).join("");
 
@@ -608,9 +620,8 @@ function renderMonthlyChart() {
 
   const context = canvas.getContext("2d");
   const chartData = getMonthlyTrend();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
-  const expenses = chartData.map((item) => item.expense + fixedTotal);
-  const savings = chartData.map((item) => item.income - (item.expense + fixedTotal));
+  const expenses = chartData.map((item) => item.expense);
+  const savings = chartData.map((item) => item.income - item.expense);
   const positiveSavings = savings.filter((value) => value > 0);
   const negativeSavings = savings.filter((value) => value < 0);
   const maxPositive = Math.max(...expenses, ...positiveSavings, 100000);
@@ -740,7 +751,7 @@ function renderDailyChart() {
 function getCurrentMonthSummary() {
   const monthKey = getCurrentMonthKey();
   const currentTransactions = appState.transactions.filter((entry) => entry.date.startsWith(monthKey));
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedTotal = getFixedExpenseTotalForMonth(monthKey);
   const income = currentTransactions
     .filter((entry) => entry.type === "income")
     .reduce((sum, entry) => sum + Number(entry.amount), 0);
@@ -757,8 +768,7 @@ function getCurrentMonthSummary() {
 
 function getMonthlyAverageExpense() {
   const trend = getMonthlyTrend();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
-  const totals = trend.map((item) => item.expense + fixedTotal);
+  const totals = trend.map((item) => item.expense);
   return totals.length ? totals.reduce((sum, value) => sum + value, 0) / totals.length : 0;
 }
 
@@ -778,7 +788,7 @@ function getMonthlyTrend() {
         .reduce((sum, entry) => sum + Number(entry.amount), 0),
       expense: monthTransactions
         .filter((entry) => entry.type === "expense")
-        .reduce((sum, entry) => sum + Number(entry.amount), 0)
+        .reduce((sum, entry) => sum + Number(entry.amount), 0) + getFixedExpenseTotalForMonth(key)
     });
   }
 
@@ -803,11 +813,66 @@ function getDailyTrend() {
         .reduce((sum, entry) => sum + Number(entry.amount), 0),
       expense: dayTransactions
         .filter((entry) => entry.type === "expense")
-        .reduce((sum, entry) => sum + Number(entry.amount), 0)
+        .reduce((sum, entry) => sum + Number(entry.amount), 0) + getFixedExpenseTotalForDate(key)
     });
   }
 
   return days;
+}
+
+function getFixedExpenseTotalForMonth(monthKey) {
+  return appState.fixedExpenses
+    .filter((item) => shouldApplyFixedExpenseToMonth(item, monthKey))
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+}
+
+function getFixedExpenseTotalForDate(dateKey) {
+  return getFixedExpenseOccurrencesForMonth(dateKey.slice(0, 7))
+    .filter((item) => item.date === dateKey)
+    .reduce((sum, item) => sum + Number(item.amount), 0);
+}
+
+function getFixedExpenseOccurrencesThroughCurrentMonth() {
+  const occurrences = [];
+  const currentMonthKey = getCurrentMonthKey();
+
+  appState.fixedExpenses.forEach((item) => {
+    if (!isValidDateString(item.date)) {
+      return;
+    }
+
+    let monthKey = item.date.slice(0, 7);
+    while (monthKey <= currentMonthKey) {
+      occurrences.push(createFixedExpenseOccurrence(item, monthKey));
+      monthKey = getNextMonthKey(monthKey);
+    }
+  });
+
+  return occurrences;
+}
+
+function getFixedExpenseOccurrencesForMonth(monthKey) {
+  return appState.fixedExpenses
+    .filter((item) => shouldApplyFixedExpenseToMonth(item, monthKey))
+    .map((item) => createFixedExpenseOccurrence(item, monthKey));
+}
+
+function shouldApplyFixedExpenseToMonth(item, monthKey) {
+  return isValidDateString(item.date) && item.date.slice(0, 7) <= monthKey;
+}
+
+function createFixedExpenseOccurrence(item, monthKey) {
+  const occurrenceDay = Math.min(Number(item.date.slice(8, 10)), getDaysInMonth(monthKey));
+  return {
+    id: `${item.id}-${monthKey}`,
+    sourceId: item.id,
+    date: `${monthKey}-${String(occurrenceDay).padStart(2, "0")}`,
+    type: "fixed",
+    category: item.name,
+    amount: Number(item.amount),
+    note: item.note || "매월 반복 고정비",
+    created_at: item.created_at || item.date
+  };
 }
 
 function getFixedExpenseDailyEstimate() {
@@ -815,8 +880,33 @@ function getFixedExpenseDailyEstimate() {
   const [, month] = monthKey.split("-").map(Number);
   const year = Number(monthKey.slice(0, 4));
   const daysInMonth = new Date(year, month, 0).getDate();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedTotal = getFixedExpenseTotalForMonth(monthKey);
   return fixedTotal / daysInMonth;
+}
+
+function getNextMonthKey(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const nextMonth = new Date(year, month, 1);
+  return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getDaysInMonth(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month, 0).getDate();
+}
+
+function isValidDateString(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+}
+
+function getTypeLabel(type) {
+  if (type === "income") {
+    return "수입";
+  }
+  if (type === "fixed") {
+    return "고정비";
+  }
+  return "지출";
 }
 
 function readSavedSession() {

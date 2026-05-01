@@ -3,10 +3,26 @@ create extension if not exists pgcrypto;
 create table if not exists public.shared_fixed_expenses (
   id uuid primary key default gen_random_uuid(),
   household_key text not null,
+  date date not null,
   name text not null,
   amount numeric(12, 0) not null check (amount >= 0),
+  note text not null default '',
   created_at timestamptz not null default now()
 );
+
+alter table public.shared_fixed_expenses
+add column if not exists date date;
+
+update public.shared_fixed_expenses
+set date = created_at::date
+where date is null;
+
+alter table public.shared_fixed_expenses
+alter column date set default current_date,
+alter column date set not null;
+
+alter table public.shared_fixed_expenses
+add column if not exists note text not null default '';
 
 create table if not exists public.shared_transactions (
   id uuid primary key default gen_random_uuid(),
@@ -59,7 +75,7 @@ begin
   select coalesce(jsonb_agg(to_jsonb(row_data) order by row_data.amount desc), '[]'::jsonb)
   into fixed_items
   from (
-    select id, name, amount, created_at
+    select id, date, name, amount, note, created_at
     from public.shared_fixed_expenses
     where household_key = safe_key
   ) as row_data;
@@ -79,10 +95,15 @@ begin
 end;
 $$;
 
-create or replace function public.add_shared_fixed_expense(
+drop function if exists public.add_shared_fixed_expense(text, text, numeric);
+drop function if exists public.add_shared_fixed_expense(text, date, text, numeric, text);
+
+create function public.add_shared_fixed_expense(
   p_household_key text,
+  p_date date,
   p_name text,
-  p_amount numeric
+  p_amount numeric,
+  p_note text default ''
 )
 returns uuid
 language plpgsql
@@ -97,8 +118,8 @@ begin
     raise exception '고정비 이름과 금액을 입력해 주세요.';
   end if;
 
-  insert into public.shared_fixed_expenses (household_key, name, amount)
-  values (safe_key, trim(p_name), p_amount)
+  insert into public.shared_fixed_expenses (household_key, date, name, amount, note)
+  values (safe_key, p_date, trim(p_name), p_amount, coalesce(p_note, ''))
   returning id into new_id;
 
   return new_id;
@@ -176,7 +197,7 @@ $$;
 
 grant usage on schema public to anon, authenticated;
 grant execute on function public.get_shared_budget(text) to anon, authenticated;
-grant execute on function public.add_shared_fixed_expense(text, text, numeric) to anon, authenticated;
+grant execute on function public.add_shared_fixed_expense(text, date, text, numeric, text) to anon, authenticated;
 grant execute on function public.add_shared_transaction(text, date, text, text, numeric, text) to anon, authenticated;
 grant execute on function public.delete_shared_fixed_expense(text, uuid) to anon, authenticated;
 grant execute on function public.delete_shared_transaction(text, uuid) to anon, authenticated;

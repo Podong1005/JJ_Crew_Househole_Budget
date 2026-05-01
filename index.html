@@ -157,12 +157,20 @@
             </div>
             <form id="fixedExpenseForm" class="entry-form">
               <label>
+                일자
+                <input type="date" name="date" required>
+              </label>
+              <label>
                 항목명
                 <input type="text" name="name" placeholder="예: 월세, 통신비, 보험료" required>
               </label>
               <label>
                 금액
                 <input type="number" name="amount" min="0" step="1" placeholder="예: 850000" required>
+              </label>
+              <label>
+                메모
+                <input type="text" name="note" placeholder="선택 사항">
               </label>
               <button type="submit">고정비 추가</button>
             </form>
