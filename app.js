@@ -1,4 +1,6 @@
 const STORAGE_KEY = "couple-budget-planner-v1";
+const LEGACY_SHARED_STORAGE_KEY = "couple-budget-shared-data-v1";
+const LEGACY_MIGRATION_PREFIX = "couple-budget-local-migrated-";
 
 const defaultState = {
   fixedExpenses: [],
@@ -146,6 +148,8 @@ function renderWaitingForHousehold() {
   elements.householdName.textContent = "아직 연결된 가계부가 없어요";
   elements.householdInviteCode.textContent = "-";
   elements.householdMessage.textContent = "한 분이 가계부를 만들고, 다른 분은 초대 코드를 입력해 합류하면 됩니다.";
+  elements.createHouseholdForm.classList.remove("is-hidden");
+  elements.joinHouseholdForm.classList.remove("is-hidden");
   renderPlaceholderDashboard("가구를 만들거나 초대 코드로 참여해 주세요.");
 }
 
@@ -158,6 +162,8 @@ function renderActiveDashboard() {
   elements.householdName.textContent = appState.household?.name || "우리집 가계부";
   elements.householdInviteCode.textContent = appState.household?.invite_code || "-";
   elements.householdMessage.textContent = "같은 초대 코드를 공유하면 부부가 같은 데이터를 보게 됩니다.";
+  elements.createHouseholdForm.classList.add("is-hidden");
+  elements.joinHouseholdForm.classList.add("is-hidden");
   render();
 }
 
@@ -315,8 +321,90 @@ async function loadHouseholdContext(forceRefresh = false) {
     return;
   }
 
+  await migrateLegacyLocalBudgetData();
   await loadBudgetData();
   setupRealtime();
+}
+
+async function migrateLegacyLocalBudgetData() {
+  if (!appState.household) {
+    return;
+  }
+
+  const migrationKey = `${LEGACY_MIGRATION_PREFIX}${appState.household.id}`;
+  if (localStorage.getItem(migrationKey)) {
+    return;
+  }
+
+  const saved = localStorage.getItem(LEGACY_SHARED_STORAGE_KEY);
+  if (!saved) {
+    localStorage.setItem(migrationKey, "empty");
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(saved);
+  } catch {
+    localStorage.setItem(migrationKey, "invalid");
+    return;
+  }
+
+  const legacyFixedExpenses = Array.isArray(parsed.fixedExpenses) ? parsed.fixedExpenses : [];
+  const legacyTransactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+  if (legacyFixedExpenses.length === 0 && legacyTransactions.length === 0) {
+    localStorage.setItem(migrationKey, "empty");
+    return;
+  }
+
+  const householdId = appState.household.id;
+  const [fixedResponse, transactionResponse] = await Promise.all([
+    supabase.from("fixed_expenses").select("id").eq("household_id", householdId),
+    supabase.from("transactions").select("id").eq("household_id", householdId)
+  ]);
+
+  if (fixedResponse.error || transactionResponse.error) {
+    elements.householdMessage.textContent = fixedResponse.error?.message || transactionResponse.error?.message || "";
+    return;
+  }
+
+  const existingFixedIds = new Set((fixedResponse.data || []).map((item) => item.id));
+  const existingTransactionIds = new Set((transactionResponse.data || []).map((item) => item.id));
+  const fixedRows = legacyFixedExpenses
+    .filter((item) => item?.name && Number(item.amount) > 0 && !existingFixedIds.has(item.id))
+    .map((item) => ({
+      ...(isUuid(item.id) ? { id: item.id } : {}),
+      household_id: householdId,
+      name: String(item.name).trim(),
+      amount: Number(item.amount)
+    }));
+  const transactionRows = legacyTransactions
+    .filter((item) => item?.date && item?.type && item?.category && Number(item.amount) > 0 && !existingTransactionIds.has(item.id))
+    .map((item) => ({
+      ...(isUuid(item.id) ? { id: item.id } : {}),
+      household_id: householdId,
+      date: item.date,
+      type: item.type,
+      category: String(item.category).trim(),
+      amount: Number(item.amount),
+      note: [item.note, item.createdBy ? `작성자: ${item.createdBy}` : ""].filter(Boolean).join(" / ")
+    }));
+
+  const insertResults = await Promise.all([
+    fixedRows.length ? supabase.from("fixed_expenses").insert(fixedRows) : Promise.resolve({ error: null }),
+    transactionRows.length ? supabase.from("transactions").insert(transactionRows) : Promise.resolve({ error: null })
+  ]);
+  const migrationError = insertResults.find((result) => result.error)?.error;
+
+  if (migrationError) {
+    elements.householdMessage.textContent = `기존 브라우저 저장 데이터를 옮기지 못했어요: ${migrationError.message}`;
+    return;
+  }
+
+  localStorage.setItem(migrationKey, new Date().toISOString());
+  if (fixedRows.length || transactionRows.length) {
+    elements.householdMessage.textContent = "이 브라우저에 남아 있던 기존 입력 내역을 공유 가계부로 옮겼어요.";
+  }
 }
 
 async function loadBudgetData() {
@@ -760,6 +848,10 @@ function formatCurrency(value) {
 
 function getTodayString() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
 }
 
 function escapeHtml(value) {

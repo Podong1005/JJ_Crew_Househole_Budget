@@ -38,6 +38,13 @@ body {
   justify-content: center;
 }
 
+.page-shell--auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .is-hidden,
 .legacy-hidden {
   display: none;
@@ -188,7 +195,7 @@ button {
 
 .current-user {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 8px 12px;
   align-items: center;
   min-width: 240px;
@@ -208,13 +215,39 @@ button {
 }
 
 .ghost-button {
-  grid-row: span 2;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
   color: var(--text);
   font-weight: 700;
+}
+
+.current-user .ghost-button {
+  grid-row: span 2;
+}
+
+.auth-toggle {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.household-panel {
+  margin-bottom: 16px;
+}
+
+.household-actions,
+.dashboard-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.household-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-grid {
+  grid-template-columns: 1fr;
 }
 
 .summary-grid {
@@ -510,6 +543,7 @@ tbody tr:hover {
 
   .app-header,
   .user-picker,
+  .household-actions,
   .summary-grid,
   .insight-grid,
   .entry-form {
