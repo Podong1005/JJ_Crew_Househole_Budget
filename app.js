@@ -27,14 +27,18 @@ const elements = {
   fixedExpenseForm: document.getElementById("fixedExpenseForm"),
   fixedExpenseList: document.getElementById("fixedExpenseList"),
   transactionForm: document.getElementById("transactionForm"),
+  recentTransactionList: document.getElementById("recentTransactionList"),
   transactionList: document.getElementById("transactionList"),
   monthlyBreakdown: document.getElementById("monthlyBreakdown"),
-  monthlyChart: document.getElementById("monthlyChart")
+  monthlyChart: document.getElementById("monthlyChart"),
+  tabButtons: [...document.querySelectorAll("[data-tab]")],
+  tabPanels: [...document.querySelectorAll("[data-tab-panel]")]
 };
 
 const appState = {
   householdCode: "",
   householdKey: "",
+  activeTab: "summary",
   fixedExpenses: [],
   transactions: [],
   pollTimer: null
@@ -50,6 +54,9 @@ function initialize() {
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
   elements.transactionForm.addEventListener("submit", handleTransactionSubmit);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  });
   window.addEventListener("resize", renderChart);
 
   if (!hasSupabaseConfig) {
@@ -119,6 +126,7 @@ function renderDashboard() {
   elements.signOutButton.textContent = "가계부 변경";
   elements.refreshButton.textContent = "새로고침";
   elements.householdMessage.textContent = "같은 코드와 PIN을 입력한 기기끼리 같은 데이터를 공유합니다.";
+  setActiveTab(appState.activeTab);
   render();
 }
 
@@ -297,6 +305,7 @@ async function handleTransactionSubmit(event) {
   event.currentTarget.reset();
   elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
   await loadBudgetData();
+  setActiveTab("summary");
 }
 
 async function handleFixedExpenseDelete(event) {
@@ -384,6 +393,7 @@ function renderPlaceholderDashboard(message) {
     </article>
   `;
   elements.transactionList.innerHTML = '<div class="empty-state">최근 거래 내역은 연결 후 표시됩니다.</div>';
+  elements.recentTransactionList.innerHTML = '<div class="empty-state">최근 거래 내역은 연결 후 표시됩니다.</div>';
   renderChart();
 }
 
@@ -391,8 +401,25 @@ function render() {
   renderSummaryCards();
   renderFixedExpenses();
   renderMonthlyBreakdown();
+  renderRecentTransactions();
   renderTransactions();
   renderChart();
+}
+
+function setActiveTab(tabName) {
+  appState.activeTab = tabName;
+  elements.tabButtons.forEach((button) => {
+    const isActive = button.dataset.tab === tabName;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+  elements.tabPanels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.tabPanel === tabName);
+  });
+
+  if (tabName === "summary") {
+    window.requestAnimationFrame(renderChart);
+  }
 }
 
 function renderSummaryCards() {
@@ -486,29 +513,32 @@ function renderTransactions() {
     return;
   }
 
-  const rows = sorted.slice(0, 12).map((entry) => `
-    <tr>
-      <td>${entry.date}</td>
-      <td><span class="pill pill--${entry.type}">${entry.type === "income" ? "수입" : "지출"}</span></td>
-      <td>${escapeHtml(entry.category)}</td>
-      <td>${escapeHtml(entry.note || "-")}</td>
-      <td class="amount ${entry.type === "income" ? "amount--income" : "amount--expense"}">${formatCurrency(entry.amount)}</td>
-    </tr>
-  `).join("");
+  elements.transactionList.innerHTML = sorted.map(renderTransactionItem).join("");
+}
 
-  elements.transactionList.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>날짜</th>
-          <th>구분</th>
-          <th>카테고리</th>
-          <th>메모</th>
-          <th>금액</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+function renderRecentTransactions() {
+  const sorted = [...appState.transactions]
+    .sort((a, b) => `${b.date}${b.created_at || ""}`.localeCompare(`${a.date}${a.created_at || ""}`))
+    .slice(0, 5);
+
+  if (sorted.length === 0) {
+    elements.recentTransactionList.innerHTML = '<div class="empty-state">최근 내역이 아직 없어요.</div>';
+    return;
+  }
+
+  elements.recentTransactionList.innerHTML = sorted.map(renderTransactionItem).join("");
+}
+
+function renderTransactionItem(entry) {
+  return `
+    <article class="transaction-item">
+      <div class="transaction-item__main">
+        <span class="pill pill--${entry.type}">${entry.type === "income" ? "수입" : "지출"}</span>
+        <strong>${escapeHtml(entry.category)}</strong>
+        <small>${escapeHtml(entry.date)}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""}</small>
+      </div>
+      <div class="amount ${entry.type === "income" ? "amount--income" : "amount--expense"}">${formatCurrency(entry.amount)}</div>
+    </article>
   `;
 }
 

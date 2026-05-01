@@ -58,99 +58,135 @@
         <p class="error-text" id="householdMessage" role="status"></p>
       </section>
 
-      <section class="summary-grid" id="summaryCards" aria-label="이번 달 요약"></section>
-
-      <main class="dashboard-grid">
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Monthly Statistics</p>
-              <h2>월별 수입 / 지출 흐름</h2>
+      <main class="app-main">
+        <section class="app-tab-panel is-active" data-tab-panel="summary">
+          <section class="summary-grid" id="summaryCards" aria-label="이번 달 요약"></section>
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Monthly Statistics</p>
+                <h2>월별 흐름</h2>
+              </div>
             </div>
-          </div>
-          <div id="monthlyBreakdown" class="insight-grid"></div>
-          <div class="chart-card">
-            <div class="chart-legend">
-              <span><i class="legend-swatch legend-swatch--expense"></i>소비</span>
-              <span><i class="legend-swatch legend-swatch--income"></i>저축</span>
+            <div id="monthlyBreakdown" class="insight-grid"></div>
+            <div class="chart-card">
+              <div class="chart-legend">
+                <span><i class="legend-swatch legend-swatch--expense"></i>소비</span>
+                <span><i class="legend-swatch legend-swatch--income"></i>저축</span>
+              </div>
+              <canvas id="monthlyChart" height="300" aria-label="월별 수입 지출 그래프"></canvas>
             </div>
-            <canvas id="monthlyChart" height="300" aria-label="월별 수입 지출 그래프"></canvas>
-          </div>
+          </section>
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Recent</p>
+                <h2>최근 내역</h2>
+              </div>
+            </div>
+            <div id="recentTransactionList" class="mobile-list"></div>
+          </section>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Transaction Entry</p>
-              <h2>수입 / 지출 입력</h2>
+        <section class="app-tab-panel" data-tab-panel="entry">
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Transaction Entry</p>
+                <h2>수입 / 지출 입력</h2>
+              </div>
             </div>
-          </div>
-          <form id="transactionForm" class="entry-form">
-            <label>
-              날짜
-              <input type="date" name="date" required>
-            </label>
-            <label>
-              구분
-              <select name="type" required>
-                <option value="income">수입</option>
-                <option value="expense">지출</option>
-              </select>
-            </label>
-            <label>
-              카테고리
-              <input type="text" name="category" placeholder="예: 급여, 식비, 교통비" required>
-            </label>
-            <label>
-              금액
-              <input type="number" name="amount" min="0" step="1" placeholder="예: 50000" required>
-            </label>
-            <label class="entry-form__wide">
-              메모
-              <input type="text" name="note" placeholder="선택 사항">
-            </label>
-            <button type="submit">내역 저장</button>
-          </form>
+            <form id="transactionForm" class="entry-form">
+              <label>
+                날짜
+                <input type="date" name="date" required>
+              </label>
+              <label>
+                구분
+                <select name="type" required>
+                  <option value="income">수입</option>
+                  <option value="expense">지출</option>
+                </select>
+              </label>
+              <label>
+                카테고리
+                <input type="text" name="category" placeholder="예: 급여, 식비, 교통비" required>
+              </label>
+              <label>
+                금액
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 50000" required>
+              </label>
+              <label class="entry-form__wide">
+                메모
+                <input type="text" name="note" placeholder="선택 사항">
+              </label>
+              <button type="submit">내역 저장</button>
+            </form>
+          </section>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Fixed Costs</p>
-              <h2>고정비 관리</h2>
+        <section class="app-tab-panel" data-tab-panel="history">
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">History</p>
+                <h2>전체 내역</h2>
+              </div>
             </div>
-          </div>
-          <form id="fixedExpenseForm" class="entry-form">
-            <label>
-              항목명
-              <input type="text" name="name" placeholder="예: 월세, 통신비, 보험료" required>
-            </label>
-            <label>
-              금액
-              <input type="number" name="amount" min="0" step="1" placeholder="예: 850000" required>
-            </label>
-            <button type="submit">고정비 추가</button>
-          </form>
-          <div id="fixedExpenseList" class="stack-list"></div>
+            <div id="transactionList" class="mobile-list"></div>
+          </section>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">History</p>
-              <h2>최근 내역</h2>
+        <section class="app-tab-panel" data-tab-panel="fixed">
+          <section class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Fixed Costs</p>
+                <h2>고정비 관리</h2>
+              </div>
             </div>
-          </div>
-          <div id="transactionList" class="table-card"></div>
+            <form id="fixedExpenseForm" class="entry-form">
+              <label>
+                항목명
+                <input type="text" name="name" placeholder="예: 월세, 통신비, 보험료" required>
+              </label>
+              <label>
+                금액
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 850000" required>
+              </label>
+              <button type="submit">고정비 추가</button>
+            </form>
+            <div id="fixedExpenseList" class="stack-list"></div>
+          </section>
         </section>
+
       </main>
+
+      <nav class="bottom-nav" aria-label="가계부 메뉴">
+        <button type="button" class="bottom-nav__button is-active" data-tab="summary">
+          <span class="bottom-nav__icon">⌂</span>
+          <span>요약</span>
+        </button>
+        <button type="button" class="bottom-nav__button" data-tab="entry">
+          <span class="bottom-nav__icon">＋</span>
+          <span>입력</span>
+        </button>
+        <button type="button" class="bottom-nav__button" data-tab="history">
+          <span class="bottom-nav__icon">≡</span>
+          <span>내역</span>
+        </button>
+        <button type="button" class="bottom-nav__button" data-tab="fixed">
+          <span class="bottom-nav__icon">₩</span>
+          <span>고정비</span>
+        </button>
+      </nav>
 
       <section class="legacy-hidden" id="dashboardState"></section>
       <section class="legacy-hidden" id="setupGuide"></section>
     </div>
   </div>
 
-  <script src="config.js?v=20260501-iife"></script>
-  <script src="app.js?v=20260501-iife"></script>
+  <script src="config.js?v=20260501-mobile-tabs"></script>
+  <script src="app.js?v=20260501-mobile-tabs"></script>
 </body>
 </html>
