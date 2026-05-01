@@ -28,13 +28,18 @@ const elements = {
   fixedExpenseList: document.getElementById("fixedExpenseList"),
   transactionForm: document.getElementById("transactionForm"),
   transactionList: document.getElementById("transactionList"),
+  dailyBreakdown: document.getElementById("dailyBreakdown"),
+  dailyChart: document.getElementById("dailyChart"),
   monthlyBreakdown: document.getElementById("monthlyBreakdown"),
-  monthlyChart: document.getElementById("monthlyChart")
+  monthlyChart: document.getElementById("monthlyChart"),
+  tabButtons: [...document.querySelectorAll("[data-tab]")],
+  tabPanels: [...document.querySelectorAll("[data-tab-panel]")]
 };
 
 const appState = {
   householdCode: "",
   householdKey: "",
+  activeTab: "daily",
   fixedExpenses: [],
   transactions: [],
   pollTimer: null
@@ -50,7 +55,11 @@ function initialize() {
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
   elements.transactionForm.addEventListener("submit", handleTransactionSubmit);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
-  window.addEventListener("resize", renderChart);
+  elements.transactionList.addEventListener("click", handleTransactionDelete);
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  });
+  window.addEventListener("resize", renderCharts);
 
   if (!hasSupabaseConfig) {
     renderSetupRequired();
@@ -119,6 +128,7 @@ function renderDashboard() {
   elements.signOutButton.textContent = "가계부 변경";
   elements.refreshButton.textContent = "새로고침";
   elements.householdMessage.textContent = "같은 코드와 PIN을 입력한 기기끼리 같은 데이터를 공유합니다.";
+  setActiveTab(appState.activeTab);
   render();
 }
 
@@ -318,6 +328,25 @@ async function handleFixedExpenseDelete(event) {
   await loadBudgetData();
 }
 
+async function handleTransactionDelete(event) {
+  const button = event.target.closest("[data-transaction-delete-id]");
+  if (!button || !appState.householdKey) {
+    return;
+  }
+
+  const { error } = await callSupabaseRpc("delete_shared_transaction", {
+    p_household_key: appState.householdKey,
+    p_id: button.dataset.transactionDeleteId
+  });
+
+  if (error) {
+    elements.householdMessage.textContent = error.message;
+    return;
+  }
+
+  await loadBudgetData();
+}
+
 async function migrateLegacyLocalBudgetData() {
   const migrationKey = `${LEGACY_MIGRATION_PREFIX}${appState.householdKey}`;
   if (!appState.householdKey || localStorage.getItem(migrationKey)) {
@@ -384,15 +413,39 @@ function renderPlaceholderDashboard(message) {
     </article>
   `;
   elements.transactionList.innerHTML = '<div class="empty-state">최근 거래 내역은 연결 후 표시됩니다.</div>';
-  renderChart();
+  elements.dailyBreakdown.innerHTML = `
+    <article class="insight-card">
+      <h3>안내</h3>
+      <div class="amount">연결 필요</div>
+      <p class="subtext">${escapeHtml(message)}</p>
+    </article>
+  `;
+  renderCharts();
 }
 
 function render() {
   renderSummaryCards();
   renderFixedExpenses();
+  renderDailyBreakdown();
   renderMonthlyBreakdown();
   renderTransactions();
-  renderChart();
+  renderCharts();
+}
+
+function setActiveTab(tabName) {
+  appState.activeTab = tabName;
+  elements.tabButtons.forEach((button) => {
+    const isActive = button.dataset.tab === tabName;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+  elements.tabPanels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.tabPanel === tabName);
+  });
+
+  if (tabName === "daily" || tabName === "monthly") {
+    window.requestAnimationFrame(renderCharts);
+  }
 }
 
 function renderSummaryCards() {
@@ -477,6 +530,34 @@ function renderMonthlyBreakdown() {
   `).join("");
 }
 
+function renderDailyBreakdown() {
+  const today = getTodayString();
+  const todayTransactions = appState.transactions.filter((entry) => entry.date === today);
+  const income = todayTransactions
+    .filter((entry) => entry.type === "income")
+    .reduce((sum, entry) => sum + Number(entry.amount), 0);
+  const expense = todayTransactions
+    .filter((entry) => entry.type === "expense")
+    .reduce((sum, entry) => sum + Number(entry.amount), 0);
+  const todayFixed = getFixedExpenseDailyEstimate();
+  const net = income - (expense + todayFixed);
+
+  const cards = [
+    { title: "오늘 수입", value: formatCurrency(income), helper: "오늘 기록된 수입" },
+    { title: "오늘 지출", value: formatCurrency(expense), helper: "오늘 기록된 변동 지출" },
+    { title: "고정비 일할", value: formatCurrency(todayFixed), helper: "월 고정비를 일 단위로 환산" },
+    { title: "오늘 잔액", value: formatCurrency(net), helper: "수입 - 지출 - 일할 고정비" }
+  ];
+
+  elements.dailyBreakdown.innerHTML = cards.map((card) => `
+    <article class="insight-card">
+      <h3>${card.title}</h3>
+      <div class="amount">${card.value}</div>
+      <p class="subtext">${card.helper}</p>
+    </article>
+  `).join("");
+}
+
 function renderTransactions() {
   const sorted = [...appState.transactions]
     .sort((a, b) => `${b.date}${b.created_at || ""}`.localeCompare(`${a.date}${a.created_at || ""}`));
@@ -493,6 +574,7 @@ function renderTransactions() {
       <td>${escapeHtml(entry.category)}</td>
       <td>${escapeHtml(entry.note || "-")}</td>
       <td class="amount ${entry.type === "income" ? "amount--income" : "amount--expense"}">${formatCurrency(entry.amount)}</td>
+      <td><button type="button" class="danger-button" data-transaction-delete-id="${entry.id}">삭제</button></td>
     </tr>
   `).join("");
 
@@ -505,6 +587,7 @@ function renderTransactions() {
           <th>카테고리</th>
           <th>메모</th>
           <th>금액</th>
+          <th>관리</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -512,7 +595,12 @@ function renderTransactions() {
   `;
 }
 
-function renderChart() {
+function renderCharts() {
+  renderMonthlyChart();
+  renderDailyChart();
+}
+
+function renderMonthlyChart() {
   const canvas = elements.monthlyChart;
   if (!canvas) {
     return;
@@ -591,6 +679,64 @@ function renderChart() {
   });
 }
 
+function renderDailyChart() {
+  const canvas = elements.dailyChart;
+  if (!canvas) {
+    return;
+  }
+
+  const context = canvas.getContext("2d");
+  const chartData = getDailyTrend();
+  const incomes = chartData.map((item) => item.income);
+  const expenses = chartData.map((item) => item.expense);
+  const maxValue = Math.max(...incomes, ...expenses, 100000);
+
+  const width = Math.max(canvas.clientWidth, 320) * window.devicePixelRatio;
+  const height = canvas.clientHeight * window.devicePixelRatio;
+  canvas.width = width;
+  canvas.height = height;
+  context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+
+  const drawWidth = canvas.clientWidth;
+  const drawHeight = canvas.clientHeight;
+  context.clearRect(0, 0, drawWidth, drawHeight);
+
+  const padding = { top: 20, right: 24, bottom: 36, left: 24 };
+  const chartHeight = drawHeight - padding.top - padding.bottom;
+  const columnWidth = (drawWidth - padding.left - padding.right) / Math.max(chartData.length, 1);
+  const baseline = padding.top + chartHeight;
+  const barWidth = Math.min(12, columnWidth * 0.28);
+
+  context.strokeStyle = "rgba(84, 96, 112, 0.14)";
+  context.lineWidth = 1;
+  for (let i = 0; i < 4; i += 1) {
+    const y = padding.top + (chartHeight / 3) * i;
+    context.beginPath();
+    context.moveTo(padding.left, y);
+    context.lineTo(drawWidth - padding.right, y);
+    context.stroke();
+  }
+
+  chartData.forEach((item, index) => {
+    const baseX = padding.left + index * columnWidth;
+    const incomeHeight = (incomes[index] / maxValue) * chartHeight;
+    const expenseHeight = (expenses[index] / maxValue) * chartHeight;
+
+    context.fillStyle = "#2563eb";
+    roundRect(context, baseX + columnWidth * 0.22, baseline - incomeHeight, barWidth, incomeHeight, 6);
+
+    context.fillStyle = "#dc2626";
+    roundRect(context, baseX + columnWidth * 0.55, baseline - expenseHeight, barWidth, expenseHeight, 6);
+
+    if (index % Math.ceil(chartData.length / 12) === 0 || index === chartData.length - 1) {
+      context.fillStyle = "#667085";
+      context.font = '11px "Segoe UI", "Malgun Gothic", sans-serif';
+      context.textAlign = "center";
+      context.fillText(item.label, baseX + columnWidth * 0.5, drawHeight - 12);
+    }
+  });
+}
+
 function getCurrentMonthSummary() {
   const monthKey = getCurrentMonthKey();
   const currentTransactions = appState.transactions.filter((entry) => entry.date.startsWith(monthKey));
@@ -637,6 +783,40 @@ function getMonthlyTrend() {
   }
 
   return months;
+}
+
+function getDailyTrend() {
+  const days = [];
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayTransactions = appState.transactions.filter((entry) => entry.date === key);
+    days.push({
+      key,
+      label: String(day),
+      income: dayTransactions
+        .filter((entry) => entry.type === "income")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0),
+      expense: dayTransactions
+        .filter((entry) => entry.type === "expense")
+        .reduce((sum, entry) => sum + Number(entry.amount), 0)
+    });
+  }
+
+  return days;
+}
+
+function getFixedExpenseDailyEstimate() {
+  const monthKey = getCurrentMonthKey();
+  const [, month] = monthKey.split("-").map(Number);
+  const year = Number(monthKey.slice(0, 4));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  return fixedTotal / daysInMonth;
 }
 
 function readSavedSession() {

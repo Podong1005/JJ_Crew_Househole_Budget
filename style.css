@@ -487,6 +487,15 @@ select:focus {
   font-weight: 800;
 }
 
+.danger-button {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fee2e2;
+  color: var(--expense);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .table-card {
   overflow-x: auto;
   border: 1px solid var(--line);

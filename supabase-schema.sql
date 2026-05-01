@@ -156,8 +156,27 @@ begin
 end;
 $$;
 
+create or replace function public.delete_shared_transaction(
+  p_household_key text,
+  p_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  safe_key text := public.assert_shared_household_key(p_household_key);
+begin
+  delete from public.shared_transactions
+  where household_key = safe_key
+    and id = p_id;
+end;
+$$;
+
 grant usage on schema public to anon, authenticated;
 grant execute on function public.get_shared_budget(text) to anon, authenticated;
 grant execute on function public.add_shared_fixed_expense(text, text, numeric) to anon, authenticated;
 grant execute on function public.add_shared_transaction(text, date, text, text, numeric, text) to anon, authenticated;
 grant execute on function public.delete_shared_fixed_expense(text, uuid) to anon, authenticated;
+grant execute on function public.delete_shared_transaction(text, uuid) to anon, authenticated;
