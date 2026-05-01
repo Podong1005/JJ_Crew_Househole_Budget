@@ -9,7 +9,8 @@ const defaultState = {
 
 const config = window.BUDGET_APP_CONFIG || {};
 const hasSupabaseConfig = Boolean(config.supabaseUrl && config.supabaseAnonKey);
-const supabase = hasSupabaseConfig
+const hasSupabaseClient = Boolean(window.supabase?.createClient);
+const supabase = hasSupabaseConfig && hasSupabaseClient
   ? window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey)
   : null;
 
@@ -73,7 +74,7 @@ function initialize() {
 
   renderAuthMode();
 
-  if (!hasSupabaseConfig) {
+  if (!hasSupabaseConfig || !hasSupabaseClient) {
     renderSetupRequired();
     return;
   }
@@ -118,12 +119,16 @@ function renderSetupRequired() {
   elements.authPanel.classList.remove("is-hidden");
   elements.dashboardState.classList.add("is-hidden");
   elements.setupGuide.classList.add("is-hidden");
-  elements.authTitle.textContent = "공유형 가계부 설정이 필요해요";
-  elements.authDescription.innerHTML = '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
+  elements.authTitle.textContent = hasSupabaseConfig ? "Supabase 연결을 불러오지 못했어요" : "공유형 가계부 설정이 필요해요";
+  elements.authDescription.innerHTML = hasSupabaseConfig
+    ? '인터넷 연결을 확인한 뒤 새로고침해 주세요. Supabase 스크립트가 로드되어야 회원가입과 로그인이 가능합니다.'
+    : '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
   elements.authForm.classList.add("is-hidden");
   elements.authToggle.classList.add("is-hidden");
   elements.householdPanel.classList.add("is-hidden");
-  elements.authError.textContent = "설정이 끝나면 로그인 후 같은 가계부를 함께 사용할 수 있어요.";
+  elements.authError.textContent = hasSupabaseConfig
+    ? "Supabase CDN 로드에 실패해 버튼을 사용할 수 없습니다."
+    : "설정이 끝나면 로그인 후 같은 가계부를 함께 사용할 수 있어요.";
 }
 
 function renderPreLoginState() {
@@ -176,6 +181,7 @@ function updateUserShell() {
 async function handleAuthSubmit(event) {
   event.preventDefault();
   if (!supabase) {
+    elements.authError.textContent = "Supabase 연결을 불러오지 못했어요. 인터넷 연결 후 새로고침해 주세요.";
     return;
   }
 
@@ -190,22 +196,31 @@ async function handleAuthSubmit(event) {
   }
 
   elements.authError.textContent = "";
+  elements.authSubmit.disabled = true;
+  elements.authSubmit.textContent = appState.authMode === "signin" ? "로그인 중..." : "회원가입 중...";
 
-  if (appState.authMode === "signin") {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    elements.authError.textContent = error?.message || "";
-    return;
+  try {
+    if (appState.authMode === "signin") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      elements.authError.textContent = error?.message || "";
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      elements.authError.textContent = "비밀번호 확인이 일치하지 않아요.";
+      return;
+    }
+
+    const { error } = await supabase.auth.signUp({ email, password });
+    elements.authError.textContent = error
+      ? error.message
+      : "회원가입 요청이 완료됐어요. 이메일 인증이 켜져 있다면 받은 편지함을 확인해 주세요.";
+  } catch (error) {
+    elements.authError.textContent = `요청 중 문제가 생겼어요: ${error.message}`;
+  } finally {
+    elements.authSubmit.disabled = false;
+    renderAuthMode();
   }
-
-  if (password !== confirmPassword) {
-    elements.authError.textContent = "비밀번호 확인이 일치하지 않아요.";
-    return;
-  }
-
-  const { error } = await supabase.auth.signUp({ email, password });
-  elements.authError.textContent = error
-    ? error.message
-    : "회원가입 요청이 완료됐어요. 이메일 인증이 켜져 있다면 받은 편지함을 확인해 주세요.";
 }
 
 function toggleAuthMode() {
