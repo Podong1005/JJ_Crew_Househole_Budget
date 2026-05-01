@@ -11,28 +11,23 @@
     <section class="select-panel" id="authPanel">
       <div class="select-panel__header">
         <p class="eyebrow">Household Budget</p>
-        <h1 id="authTitle">부부 공동 가계부 로그인</h1>
-        <p class="subtext" id="authDescription">각자 로그인한 뒤 같은 가계부에 연결하면 어디서든 같은 데이터를 볼 수 있어요.</p>
+        <h1 id="authTitle">공유 가계부 입장</h1>
+        <p class="subtext" id="authDescription">두 기기에서 같은 가계부 코드와 PIN을 입력하면 같은 내역을 볼 수 있어요.</p>
       </div>
 
       <form id="authForm" class="entry-form">
         <label class="entry-form__wide">
-          이메일
-          <input type="email" name="email" autocomplete="email" required>
+          가계부 코드
+          <input type="text" name="budgetCode" autocomplete="off" placeholder="예: jjcrew-house" required>
         </label>
         <label class="entry-form__wide">
-          비밀번호
-          <input type="password" name="password" autocomplete="current-password" required>
+          PIN
+          <input type="password" name="budgetPin" inputmode="numeric" autocomplete="off" minlength="4" placeholder="4자리 이상" required>
         </label>
-        <label class="entry-form__wide is-hidden" id="confirmPasswordField">
-          비밀번호 확인
-          <input type="password" name="confirmPassword" autocomplete="new-password">
-        </label>
-        <button type="submit" id="authSubmit">로그인</button>
+        <button type="submit" id="authSubmit">입장</button>
       </form>
 
-      <p class="subtext" id="authModeStatus">현재 모드: 로그인</p>
-      <button type="button" class="ghost-button auth-toggle" id="authToggle">처음이라면 회원가입</button>
+      <p class="subtext" id="authModeStatus">로그인 없이 코드와 PIN으로 연결합니다.</p>
       <p class="error-text" id="authError" role="status"></p>
     </section>
 
@@ -44,9 +39,9 @@
           <p class="subtext">고정비와 일상 수입/지출을 함께 기록하고 흐름을 확인합니다.</p>
         </div>
         <div class="current-user">
-          <span class="current-user__label">로그인 계정</span>
-          <strong id="householdUser">로그인되지 않음</strong>
-          <button type="button" class="ghost-button" id="signOutButton">로그아웃</button>
+          <span class="current-user__label">공유 가계부</span>
+          <strong id="householdUser">미연결</strong>
+          <button type="button" class="ghost-button" id="signOutButton">가계부 변경</button>
           <button type="button" class="ghost-button" id="refreshButton">새로고침</button>
         </div>
       </header>
@@ -54,29 +49,12 @@
       <section class="panel household-panel" id="householdPanel">
         <div class="section-heading">
           <div>
-            <p class="section-heading__eyebrow">Shared Household</p>
-            <h2 id="householdName">가계부 연결</h2>
-            <p class="subtext">초대 코드: <strong id="householdInviteCode">-</strong></p>
+            <p class="section-heading__eyebrow">Shared Budget</p>
+            <h2 id="householdName">공유 가계부</h2>
+            <p class="subtext">연결 방식: <strong id="householdInviteCode">코드 + PIN</strong></p>
           </div>
         </div>
 
-        <div class="household-actions">
-          <form id="createHouseholdForm" class="entry-form">
-            <label>
-              새 가계부 이름
-              <input type="text" name="householdName" placeholder="예: 우리집 가계부">
-            </label>
-            <button type="submit">가계부 만들기</button>
-          </form>
-
-          <form id="joinHouseholdForm" class="entry-form">
-            <label>
-              초대 코드
-              <input type="text" name="inviteCode" placeholder="상대방의 초대 코드">
-            </label>
-            <button type="submit">초대 코드로 참여</button>
-          </form>
-        </div>
         <p class="error-text" id="householdMessage" role="status"></p>
       </section>
 
@@ -174,7 +152,7 @@
 
   <script>
     (function loadBudgetApp() {
-      var version = "20260501-auth-loader";
+      var version = "20260501-shared-code";
       var supabaseSources = [
         "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
         "https://unpkg.com/@supabase/supabase-js@2"

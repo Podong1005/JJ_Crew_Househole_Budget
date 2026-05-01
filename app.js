@@ -1,11 +1,6 @@
-const STORAGE_KEY = "couple-budget-planner-v1";
+const SESSION_KEY = "jj-crew-budget-session-v2";
 const LEGACY_SHARED_STORAGE_KEY = "couple-budget-shared-data-v1";
-const LEGACY_MIGRATION_PREFIX = "couple-budget-local-migrated-";
-
-const defaultState = {
-  fixedExpenses: [],
-  transactions: []
-};
+const LEGACY_MIGRATION_PREFIX = "jj-crew-shared-migrated-";
 
 const config = window.BUDGET_APP_CONFIG || {};
 const hasSupabaseConfig = Boolean(config.supabaseUrl && config.supabaseAnonKey);
@@ -23,19 +18,13 @@ const elements = {
   authDescription: document.getElementById("authDescription"),
   authSubmit: document.getElementById("authSubmit"),
   authModeStatus: document.getElementById("authModeStatus"),
-  authToggle: document.getElementById("authToggle"),
   authError: document.getElementById("authError"),
-  confirmPasswordField: document.getElementById("confirmPasswordField"),
-  dashboardState: document.getElementById("dashboardState"),
-  setupGuide: document.getElementById("setupGuide"),
   householdPanel: document.getElementById("householdPanel"),
   householdName: document.getElementById("householdName"),
   householdInviteCode: document.getElementById("householdInviteCode"),
   householdUser: document.getElementById("householdUser"),
   signOutButton: document.getElementById("signOutButton"),
   refreshButton: document.getElementById("refreshButton"),
-  createHouseholdForm: document.getElementById("createHouseholdForm"),
-  joinHouseholdForm: document.getElementById("joinHouseholdForm"),
   householdMessage: document.getElementById("householdMessage"),
   summaryCards: document.getElementById("summaryCards"),
   fixedExpenseForm: document.getElementById("fixedExpenseForm"),
@@ -47,308 +36,306 @@ const elements = {
 };
 
 const appState = {
-  authMode: "signin",
-  user: null,
-  household: null,
+  householdCode: "",
+  householdKey: "",
   fixedExpenses: [],
   transactions: [],
-  channel: null
+  channel: null,
+  pollTimer: null
 };
 
 initialize();
 
 function initialize() {
-  const dateInput = elements.transactionForm.querySelector('input[name="date"]');
-  dateInput.value = getTodayString();
-
-  elements.authForm.addEventListener("submit", handleAuthSubmit);
-  elements.authToggle.addEventListener("click", toggleAuthMode);
-  elements.signOutButton.addEventListener("click", handleSignOut);
+  elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
+  elements.authForm.addEventListener("submit", handleBudgetAccess);
+  elements.signOutButton.addEventListener("click", handleChangeBudget);
   elements.refreshButton.addEventListener("click", handleRefresh);
-  elements.createHouseholdForm.addEventListener("submit", handleCreateHousehold);
-  elements.joinHouseholdForm.addEventListener("submit", handleJoinHousehold);
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
   elements.transactionForm.addEventListener("submit", handleTransactionSubmit);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
   window.addEventListener("resize", renderChart);
-
-  renderAuthMode();
 
   if (!hasSupabaseConfig || !hasSupabaseClient) {
     renderSetupRequired();
     return;
   }
 
-  initializeSupabaseSession();
-}
-
-async function initializeSupabaseSession() {
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
-
-  appState.user = session?.user ?? null;
-  updateUserShell();
-
-  supabase.auth.onAuthStateChange(async (_event, session) => {
-    appState.user = session?.user ?? null;
-    appState.household = null;
-    appState.fixedExpenses = [];
-    appState.transactions = [];
-    teardownRealtime();
-    updateUserShell();
-
-    if (appState.user) {
-      await loadHouseholdContext();
-    } else {
-      renderPreLoginState();
-    }
-  });
-
-  if (appState.user) {
-    await loadHouseholdContext();
-  } else {
-    renderPreLoginState();
+  const savedSession = readSavedSession();
+  if (savedSession) {
+    appState.householdCode = savedSession.householdCode;
+    appState.householdKey = savedSession.householdKey;
+    loadBudgetData();
+    setupRealtime();
+    startPolling();
+    return;
   }
+
+  renderAccessForm();
 }
 
 function renderSetupRequired() {
-  elements.appShell.classList.add("is-setup");
   elements.appShell.classList.add("page-shell--auth");
   elements.protectedContent.classList.add("is-hidden");
   elements.authPanel.classList.remove("is-hidden");
-  elements.dashboardState.classList.add("is-hidden");
-  elements.setupGuide.classList.add("is-hidden");
-  elements.authTitle.textContent = hasSupabaseConfig ? "Supabase 연결을 불러오지 못했어요" : "공유형 가계부 설정이 필요해요";
-  elements.authDescription.innerHTML = hasSupabaseConfig
-    ? '인터넷 연결을 확인한 뒤 새로고침해 주세요. Supabase 스크립트가 로드되어야 회원가입과 로그인이 가능합니다.'
-    : '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
   elements.authForm.classList.add("is-hidden");
-  elements.authToggle.classList.add("is-hidden");
-  elements.householdPanel.classList.add("is-hidden");
+  elements.authTitle.textContent = hasSupabaseConfig ? "Supabase 연결을 불러오지 못했어요" : "공유 가계부 설정이 필요해요";
+  elements.authDescription.innerHTML = hasSupabaseConfig
+    ? "인터넷 연결을 확인한 뒤 새로고침해 주세요."
+    : '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
+  elements.authModeStatus.textContent = "";
   elements.authError.textContent = hasSupabaseConfig
-    ? "Supabase CDN 로드에 실패해 버튼을 사용할 수 없습니다."
-    : "설정이 끝나면 로그인 후 같은 가계부를 함께 사용할 수 있어요.";
+    ? "Supabase 스크립트가 로드되어야 공유 가계부를 사용할 수 있습니다."
+    : "설정 후 같은 코드와 PIN으로 여러 기기에서 접속할 수 있어요.";
 }
 
-function renderPreLoginState() {
-  elements.appShell.classList.remove("is-setup");
+function renderAccessForm() {
   elements.appShell.classList.add("page-shell--auth");
   elements.protectedContent.classList.add("is-hidden");
   elements.authPanel.classList.remove("is-hidden");
   elements.authForm.classList.remove("is-hidden");
-  elements.authToggle.classList.remove("is-hidden");
-  elements.dashboardState.classList.add("is-hidden");
-  elements.setupGuide.classList.add("is-hidden");
-  elements.householdPanel.classList.add("is-hidden");
+  elements.authTitle.textContent = "공유 가계부 입장";
+  elements.authDescription.textContent = "두 기기에서 같은 가계부 코드와 PIN을 입력하면 같은 내역을 볼 수 있어요.";
+  elements.authSubmit.textContent = "입장";
+  elements.authModeStatus.textContent = "로그인 없이 코드와 PIN으로 연결합니다.";
   elements.authError.textContent = "";
-  elements.authModeStatus.textContent = "앱 연결 완료";
 }
 
-function renderWaitingForHousehold() {
+function renderDashboard() {
   elements.appShell.classList.remove("page-shell--auth");
-  elements.protectedContent.classList.remove("is-hidden");
   elements.authPanel.classList.add("is-hidden");
-  elements.dashboardState.classList.remove("is-hidden");
-  elements.householdPanel.classList.remove("is-hidden");
-  elements.householdName.textContent = "아직 연결된 가계부가 없어요";
-  elements.householdInviteCode.textContent = "-";
-  elements.householdMessage.textContent = "한 분이 가계부를 만들고, 다른 분은 초대 코드를 입력해 합류하면 됩니다.";
-  elements.createHouseholdForm.classList.remove("is-hidden");
-  elements.joinHouseholdForm.classList.remove("is-hidden");
-  renderPlaceholderDashboard("가구를 만들거나 초대 코드로 참여해 주세요.");
-}
-
-function renderActiveDashboard() {
-  elements.authPanel.classList.add("is-hidden");
-  elements.appShell.classList.remove("page-shell--auth");
   elements.protectedContent.classList.remove("is-hidden");
-  elements.dashboardState.classList.add("is-hidden");
   elements.householdPanel.classList.remove("is-hidden");
-  elements.householdName.textContent = appState.household?.name || "우리집 가계부";
-  elements.householdInviteCode.textContent = appState.household?.invite_code || "-";
-  elements.householdMessage.textContent = "같은 초대 코드를 공유하면 부부가 같은 데이터를 보게 됩니다.";
-  elements.createHouseholdForm.classList.add("is-hidden");
-  elements.joinHouseholdForm.classList.add("is-hidden");
+  elements.householdName.textContent = appState.householdCode || "공유 가계부";
+  elements.householdInviteCode.textContent = "PIN은 저장하지 않습니다";
+  elements.householdUser.textContent = appState.householdCode || "미연결";
+  elements.signOutButton.textContent = "가계부 변경";
+  elements.refreshButton.textContent = "새로고침";
+  elements.householdMessage.textContent = "같은 코드와 PIN을 입력한 기기끼리 같은 데이터를 공유합니다.";
   render();
 }
 
-function updateUserShell() {
-  elements.householdUser.textContent = appState.user?.email || "로그인되지 않음";
-  elements.signOutButton.disabled = !appState.user;
-  elements.refreshButton.disabled = !appState.user;
-}
-
-async function handleAuthSubmit(event) {
+async function handleBudgetAccess(event) {
   event.preventDefault();
   if (!supabase) {
-    elements.authError.textContent = "Supabase 연결을 불러오지 못했어요. 인터넷 연결 후 새로고침해 주세요.";
+    elements.authError.textContent = "Supabase 연결을 불러오지 못했어요. 새로고침해 주세요.";
     return;
   }
 
   const formData = new FormData(event.currentTarget);
-  const email = formData.get("email").toString().trim();
-  const password = formData.get("password").toString();
-  const confirmPassword = formData.get("confirmPassword")?.toString() || "";
+  const householdCode = normalizeBudgetCode(formData.get("budgetCode"));
+  const pin = String(formData.get("budgetPin") || "").trim();
 
-  if (!email || !password) {
-    elements.authError.textContent = "이메일과 비밀번호를 입력해 주세요.";
+  if (!householdCode || pin.length < 4) {
+    elements.authError.textContent = "가계부 코드와 4자리 이상의 PIN을 입력해 주세요.";
     return;
   }
 
-  elements.authError.textContent = "";
   elements.authSubmit.disabled = true;
-  elements.authSubmit.textContent = appState.authMode === "signin" ? "로그인 중..." : "회원가입 중...";
+  elements.authSubmit.textContent = "연결 중...";
+  elements.authError.textContent = "";
 
   try {
-    if (appState.authMode === "signin") {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      elements.authError.textContent = error?.message || "";
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      elements.authError.textContent = "비밀번호 확인이 일치하지 않아요.";
-      return;
-    }
-
-    const { error } = await supabase.auth.signUp({ email, password });
-    elements.authError.textContent = error
-      ? error.message
-      : "회원가입 요청이 완료됐어요. 이메일 인증이 켜져 있다면 받은 편지함을 확인해 주세요.";
+    const householdKey = await createHouseholdKey(householdCode, pin);
+    appState.householdCode = householdCode;
+    appState.householdKey = householdKey;
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ householdCode, householdKey }));
+    await migrateLegacyLocalBudgetData();
+    await loadBudgetData();
+    setupRealtime();
+    startPolling();
+    elements.authForm.reset();
   } catch (error) {
-    elements.authError.textContent = `요청 중 문제가 생겼어요: ${error.message}`;
+    appState.householdCode = "";
+    appState.householdKey = "";
+    localStorage.removeItem(SESSION_KEY);
+    elements.authError.textContent = `가계부 연결 중 문제가 생겼어요: ${error.message}`;
   } finally {
     elements.authSubmit.disabled = false;
-    renderAuthMode();
+    elements.authSubmit.textContent = "입장";
   }
 }
 
-function toggleAuthMode() {
-  appState.authMode = appState.authMode === "signin" ? "signup" : "signin";
-  elements.authError.textContent = "";
-  elements.authForm.reset();
-  renderAuthMode();
-}
-
-function renderAuthMode() {
-  const isSignIn = appState.authMode === "signin";
-  elements.authTitle.textContent = isSignIn ? "부부 공동 가계부 로그인" : "공동 가계부 계정 만들기";
-  elements.authDescription.textContent = isSignIn
-    ? "각자 로그인한 뒤 같은 가계부에 연결하면 어디서든 같은 데이터를 볼 수 있어요."
-    : "계정을 만든 뒤 한 분이 가계부를 만들고, 다른 분은 초대 코드로 참여하세요.";
-  elements.authSubmit.textContent = isSignIn ? "로그인" : "회원가입";
-  elements.authModeStatus.textContent = `현재 모드: ${isSignIn ? "로그인" : "회원가입"}`;
-  elements.authToggle.textContent = isSignIn ? "처음이라면 회원가입" : "이미 계정이 있다면 로그인";
-  elements.confirmPasswordField.classList.toggle("is-hidden", isSignIn);
-  elements.confirmPasswordField.querySelector("input").toggleAttribute("required", !isSignIn);
-}
-
-async function handleSignOut() {
-  if (!supabase) {
-    return;
-  }
-
-  await supabase.auth.signOut();
+function handleChangeBudget() {
+  teardownRealtime();
+  stopPolling();
+  localStorage.removeItem(SESSION_KEY);
+  appState.householdCode = "";
+  appState.householdKey = "";
+  appState.fixedExpenses = [];
+  appState.transactions = [];
+  renderAccessForm();
 }
 
 async function handleRefresh() {
-  if (!appState.user) {
+  if (!appState.householdKey) {
     return;
   }
 
-  await loadHouseholdContext(true);
-}
-
-async function handleCreateHousehold(event) {
-  event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-  const householdName = formData.get("householdName").toString().trim();
-
-  if (!householdName) {
-    elements.householdMessage.textContent = "가계부 이름을 입력해 주세요.";
-    return;
-  }
-
-  const { error } = await supabase.rpc("create_household_with_owner", {
-    p_name: householdName
-  });
-
-  if (error) {
-    elements.householdMessage.textContent = error.message;
-    return;
-  }
-
-  event.currentTarget.reset();
-  await loadHouseholdContext(true);
-}
-
-async function handleJoinHousehold(event) {
-  event.preventDefault();
-  const formData = new FormData(event.currentTarget);
-  const inviteCode = formData.get("inviteCode").toString().trim().toUpperCase();
-
-  if (!inviteCode) {
-    elements.householdMessage.textContent = "초대 코드를 입력해 주세요.";
-    return;
-  }
-
-  const { error } = await supabase.rpc("join_household_by_invite_code", {
-    p_invite_code: inviteCode
-  });
-
-  if (error) {
-    elements.householdMessage.textContent = error.message;
-    return;
-  }
-
-  event.currentTarget.reset();
-  await loadHouseholdContext(true);
-}
-
-async function loadHouseholdContext(forceRefresh = false) {
-  if (!appState.user) {
-    renderPreLoginState();
-    return;
-  }
-
-  if (forceRefresh) {
-    teardownRealtime();
-  }
-
-  const { data, error } = await supabase
-    .from("household_members")
-    .select("household:households(id, name, invite_code)")
-    .eq("user_id", appState.user.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    renderPlaceholderDashboard("가계부 연결 정보를 불러오지 못했어요.");
-    elements.householdPanel.classList.remove("is-hidden");
-    elements.householdMessage.textContent = error.message;
-    return;
-  }
-
-  appState.household = data?.household ?? null;
-
-  if (!appState.household) {
-    renderWaitingForHousehold();
-    return;
-  }
-
-  await migrateLegacyLocalBudgetData();
   await loadBudgetData();
-  setupRealtime();
+}
+
+async function loadBudgetData() {
+  if (!appState.householdKey) {
+    renderAccessForm();
+    return;
+  }
+
+  const { data, error } = await supabase.rpc("get_shared_budget", {
+    p_household_key: appState.householdKey
+  });
+
+  if (error) {
+    elements.householdMessage.textContent = error.message;
+    if (!elements.protectedContent.classList.contains("is-hidden")) {
+      renderPlaceholderDashboard("데이터를 불러오는 중 문제가 생겼어요.");
+    } else {
+      elements.authError.textContent = error.message;
+    }
+    return;
+  }
+
+  appState.fixedExpenses = data?.fixed_expenses || [];
+  appState.transactions = data?.transactions || [];
+  renderDashboard();
+}
+
+function setupRealtime() {
+  if (!appState.householdKey || appState.channel) {
+    return;
+  }
+
+  appState.channel = supabase
+    .channel(`budget-${appState.householdKey}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "shared_fixed_expenses", filter: `household_key=eq.${appState.householdKey}` },
+      () => loadBudgetData()
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "shared_transactions", filter: `household_key=eq.${appState.householdKey}` },
+      () => loadBudgetData()
+    )
+    .subscribe();
+}
+
+function teardownRealtime() {
+  if (!appState.channel) {
+    return;
+  }
+
+  supabase.removeChannel(appState.channel);
+  appState.channel = null;
+}
+
+function startPolling() {
+  stopPolling();
+  appState.pollTimer = window.setInterval(() => {
+    if (appState.householdKey && !document.hidden) {
+      loadBudgetData();
+    }
+  }, 15000);
+}
+
+function stopPolling() {
+  if (!appState.pollTimer) {
+    return;
+  }
+
+  window.clearInterval(appState.pollTimer);
+  appState.pollTimer = null;
+}
+
+async function handleFixedExpenseSubmit(event) {
+  event.preventDefault();
+  if (!appState.householdKey) {
+    return;
+  }
+
+  const formData = new FormData(event.currentTarget);
+  const name = String(formData.get("name") || "").trim();
+  const amount = Number(formData.get("amount"));
+
+  if (!name || amount <= 0) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("add_shared_fixed_expense", {
+    p_household_key: appState.householdKey,
+    p_name: name,
+    p_amount: amount
+  });
+
+  if (error) {
+    elements.householdMessage.textContent = error.message;
+    return;
+  }
+
+  event.currentTarget.reset();
+  await loadBudgetData();
+}
+
+async function handleTransactionSubmit(event) {
+  event.preventDefault();
+  if (!appState.householdKey) {
+    return;
+  }
+
+  const formData = new FormData(event.currentTarget);
+  const transaction = {
+    date: String(formData.get("date") || ""),
+    type: String(formData.get("type") || ""),
+    category: String(formData.get("category") || "").trim(),
+    amount: Number(formData.get("amount")),
+    note: String(formData.get("note") || "").trim()
+  };
+
+  if (!transaction.date || !transaction.category || transaction.amount <= 0) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("add_shared_transaction", {
+    p_household_key: appState.householdKey,
+    p_date: transaction.date,
+    p_type: transaction.type,
+    p_category: transaction.category,
+    p_amount: transaction.amount,
+    p_note: transaction.note
+  });
+
+  if (error) {
+    elements.householdMessage.textContent = error.message;
+    return;
+  }
+
+  event.currentTarget.reset();
+  elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
+  await loadBudgetData();
+}
+
+async function handleFixedExpenseDelete(event) {
+  const button = event.target.closest("[data-delete-id]");
+  if (!button || !appState.householdKey) {
+    return;
+  }
+
+  const { error } = await supabase.rpc("delete_shared_fixed_expense", {
+    p_household_key: appState.householdKey,
+    p_id: button.dataset.deleteId
+  });
+
+  if (error) {
+    elements.householdMessage.textContent = error.message;
+    return;
+  }
+
+  await loadBudgetData();
 }
 
 async function migrateLegacyLocalBudgetData() {
-  if (!appState.household) {
-    return;
-  }
-
-  const migrationKey = `${LEGACY_MIGRATION_PREFIX}${appState.household.id}`;
-  if (localStorage.getItem(migrationKey)) {
+  const migrationKey = `${LEGACY_MIGRATION_PREFIX}${appState.householdKey}`;
+  if (!appState.householdKey || localStorage.getItem(migrationKey)) {
     return;
   }
 
@@ -366,217 +353,48 @@ async function migrateLegacyLocalBudgetData() {
     return;
   }
 
-  const legacyFixedExpenses = Array.isArray(parsed.fixedExpenses) ? parsed.fixedExpenses : [];
-  const legacyTransactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
-  if (legacyFixedExpenses.length === 0 && legacyTransactions.length === 0) {
-    localStorage.setItem(migrationKey, "empty");
-    return;
+  const fixedExpenses = Array.isArray(parsed.fixedExpenses) ? parsed.fixedExpenses : [];
+  const transactions = Array.isArray(parsed.transactions) ? parsed.transactions : [];
+
+  for (const item of fixedExpenses) {
+    if (item?.name && Number(item.amount) > 0) {
+      await supabase.rpc("add_shared_fixed_expense", {
+        p_household_key: appState.householdKey,
+        p_name: String(item.name).trim(),
+        p_amount: Number(item.amount)
+      });
+    }
   }
 
-  const householdId = appState.household.id;
-  const [fixedResponse, transactionResponse] = await Promise.all([
-    supabase.from("fixed_expenses").select("id").eq("household_id", householdId),
-    supabase.from("transactions").select("id").eq("household_id", householdId)
-  ]);
-
-  if (fixedResponse.error || transactionResponse.error) {
-    elements.householdMessage.textContent = fixedResponse.error?.message || transactionResponse.error?.message || "";
-    return;
-  }
-
-  const existingFixedIds = new Set((fixedResponse.data || []).map((item) => item.id));
-  const existingTransactionIds = new Set((transactionResponse.data || []).map((item) => item.id));
-  const fixedRows = legacyFixedExpenses
-    .filter((item) => item?.name && Number(item.amount) > 0 && !existingFixedIds.has(item.id))
-    .map((item) => ({
-      ...(isUuid(item.id) ? { id: item.id } : {}),
-      household_id: householdId,
-      name: String(item.name).trim(),
-      amount: Number(item.amount)
-    }));
-  const transactionRows = legacyTransactions
-    .filter((item) => item?.date && item?.type && item?.category && Number(item.amount) > 0 && !existingTransactionIds.has(item.id))
-    .map((item) => ({
-      ...(isUuid(item.id) ? { id: item.id } : {}),
-      household_id: householdId,
-      date: item.date,
-      type: item.type,
-      category: String(item.category).trim(),
-      amount: Number(item.amount),
-      note: [item.note, item.createdBy ? `작성자: ${item.createdBy}` : ""].filter(Boolean).join(" / ")
-    }));
-
-  const insertResults = await Promise.all([
-    fixedRows.length ? supabase.from("fixed_expenses").insert(fixedRows) : Promise.resolve({ error: null }),
-    transactionRows.length ? supabase.from("transactions").insert(transactionRows) : Promise.resolve({ error: null })
-  ]);
-  const migrationError = insertResults.find((result) => result.error)?.error;
-
-  if (migrationError) {
-    elements.householdMessage.textContent = `기존 브라우저 저장 데이터를 옮기지 못했어요: ${migrationError.message}`;
-    return;
+  for (const item of transactions) {
+    if (item?.date && item?.type && item?.category && Number(item.amount) > 0) {
+      await supabase.rpc("add_shared_transaction", {
+        p_household_key: appState.householdKey,
+        p_date: item.date,
+        p_type: item.type,
+        p_category: String(item.category).trim(),
+        p_amount: Number(item.amount),
+        p_note: [item.note, item.createdBy ? `작성자: ${item.createdBy}` : ""].filter(Boolean).join(" / ")
+      });
+    }
   }
 
   localStorage.setItem(migrationKey, new Date().toISOString());
-  if (fixedRows.length || transactionRows.length) {
-    elements.householdMessage.textContent = "이 브라우저에 남아 있던 기존 입력 내역을 공유 가계부로 옮겼어요.";
-  }
-}
-
-async function loadBudgetData() {
-  const householdId = appState.household.id;
-  const [fixedResponse, transactionResponse] = await Promise.all([
-    supabase
-      .from("fixed_expenses")
-      .select("id, name, amount, created_at")
-      .eq("household_id", householdId)
-      .order("amount", { ascending: false }),
-    supabase
-      .from("transactions")
-      .select("id, date, type, category, amount, note, created_at")
-      .eq("household_id", householdId)
-      .order("date", { ascending: false })
-      .order("created_at", { ascending: false })
-  ]);
-
-  if (fixedResponse.error || transactionResponse.error) {
-    renderPlaceholderDashboard("데이터를 불러오는 중 문제가 생겼어요.");
-    elements.householdMessage.textContent = fixedResponse.error?.message || transactionResponse.error?.message || "";
-    return;
-  }
-
-  appState.fixedExpenses = fixedResponse.data || [];
-  appState.transactions = transactionResponse.data || [];
-  renderActiveDashboard();
-}
-
-function setupRealtime() {
-  if (!appState.household || appState.channel) {
-    return;
-  }
-
-  appState.channel = supabase
-    .channel(`budget-household-${appState.household.id}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "fixed_expenses", filter: `household_id=eq.${appState.household.id}` },
-      async () => {
-        await loadBudgetData();
-      }
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "transactions", filter: `household_id=eq.${appState.household.id}` },
-      async () => {
-        await loadBudgetData();
-      }
-    )
-    .subscribe();
-}
-
-function teardownRealtime() {
-  if (!appState.channel) {
-    return;
-  }
-
-  supabase.removeChannel(appState.channel);
-  appState.channel = null;
-}
-
-async function handleFixedExpenseSubmit(event) {
-  event.preventDefault();
-  if (!appState.household) {
-    return;
-  }
-
-  const formData = new FormData(event.currentTarget);
-  const name = formData.get("name").toString().trim();
-  const amount = Number(formData.get("amount"));
-
-  if (!name || amount <= 0) {
-    return;
-  }
-
-  const { error } = await supabase.from("fixed_expenses").insert({
-    household_id: appState.household.id,
-    name,
-    amount
-  });
-
-  if (error) {
-    elements.householdMessage.textContent = error.message;
-    return;
-  }
-
-  event.currentTarget.reset();
-  await loadBudgetData();
-}
-
-async function handleTransactionSubmit(event) {
-  event.preventDefault();
-  if (!appState.household) {
-    return;
-  }
-
-  const formData = new FormData(event.currentTarget);
-  const transaction = {
-    household_id: appState.household.id,
-    date: formData.get("date").toString(),
-    type: formData.get("type").toString(),
-    category: formData.get("category").toString().trim(),
-    amount: Number(formData.get("amount")),
-    note: formData.get("note").toString().trim()
-  };
-
-  if (!transaction.date || !transaction.category || transaction.amount <= 0) {
-    return;
-  }
-
-  const { error } = await supabase.from("transactions").insert(transaction);
-
-  if (error) {
-    elements.householdMessage.textContent = error.message;
-    return;
-  }
-
-  event.currentTarget.reset();
-  elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
-  await loadBudgetData();
-}
-
-async function handleFixedExpenseDelete(event) {
-  const button = event.target.closest("[data-delete-id]");
-  if (!button || !appState.household) {
-    return;
-  }
-
-  const { error } = await supabase
-    .from("fixed_expenses")
-    .delete()
-    .eq("id", button.dataset.deleteId)
-    .eq("household_id", appState.household.id);
-
-  if (error) {
-    elements.householdMessage.textContent = error.message;
-    return;
-  }
-
-  await loadBudgetData();
 }
 
 function renderPlaceholderDashboard(message) {
   elements.summaryCards.innerHTML = `
     <article class="summary-card">
-      <h3>공동 가계부 준비 중</h3>
+      <h3>공유 가계부 준비 중</h3>
       <div class="amount">${escapeHtml(message)}</div>
-      <p class="subtext">설정이 끝나면 여기서 부부가 같은 데이터를 함께 보게 됩니다.</p>
+      <p class="subtext">같은 코드와 PIN을 입력하면 여러 기기에서 같은 데이터를 볼 수 있어요.</p>
     </article>
   `;
   elements.fixedExpenseList.innerHTML = '<div class="empty-state">고정비 목록은 연결 후 표시됩니다.</div>';
   elements.monthlyBreakdown.innerHTML = `
     <article class="insight-card">
       <h3>안내</h3>
-      <div class="amount">로그인 필요</div>
+      <div class="amount">연결 필요</div>
       <p class="subtext">${escapeHtml(message)}</p>
     </article>
   `;
@@ -711,6 +529,10 @@ function renderTransactions() {
 
 function renderChart() {
   const canvas = elements.monthlyChart;
+  if (!canvas) {
+    return;
+  }
+
   const context = canvas.getContext("2d");
   const chartData = getMonthlyTrend();
   const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
@@ -721,7 +543,7 @@ function renderChart() {
   const maxPositive = Math.max(...expenses, ...positiveSavings, 100000);
   const maxNegative = Math.min(...negativeSavings, 0);
 
-  const width = canvas.clientWidth * window.devicePixelRatio;
+  const width = Math.max(canvas.clientWidth, 320) * window.devicePixelRatio;
   const height = canvas.clientHeight * window.devicePixelRatio;
   canvas.width = width;
   canvas.height = height;
@@ -737,7 +559,7 @@ function renderChart() {
   const zeroLineRatio = maxNegative < 0 ? maxPositive / (maxPositive + Math.abs(maxNegative)) : 1;
   const zeroY = padding.top + chartHeight * zeroLineRatio;
 
-  context.strokeStyle = "rgba(109, 71, 44, 0.12)";
+  context.strokeStyle = "rgba(84, 96, 112, 0.14)";
   context.lineWidth = 1;
   for (let i = 0; i < 4; i += 1) {
     const y = padding.top + (chartHeight / 3) * i;
@@ -747,7 +569,7 @@ function renderChart() {
     context.stroke();
   }
 
-  context.strokeStyle = "rgba(109, 71, 44, 0.22)";
+  context.strokeStyle = "rgba(84, 96, 112, 0.24)";
   context.beginPath();
   context.moveTo(padding.left, zeroY);
   context.lineTo(drawWidth - padding.right, zeroY);
@@ -766,32 +588,28 @@ function renderChart() {
       : 0;
     const barWidth = Math.min(26, columnWidth * 0.28);
 
-    context.fillStyle = "#d95d39";
+    context.fillStyle = "#dc2626";
     roundRect(context, baseX + columnWidth * 0.15, zeroY - expenseBarHeight, barWidth, expenseBarHeight, 10);
 
+    context.fillStyle = savingsValue < 0 ? "#b45309" : "#138a45";
     if (negativeSavingsHeight > 0) {
-      context.fillStyle = "#8f3d2f";
       roundRect(context, baseX + columnWidth * 0.55, zeroY, barWidth, negativeSavingsHeight, 10);
     }
-
     if (positiveSavingsHeight > 0) {
-      context.fillStyle = "#2e8b57";
       roundRect(context, baseX + columnWidth * 0.55, zeroY - positiveSavingsHeight, barWidth, positiveSavingsHeight, 10);
     }
 
-    context.fillStyle = "#7f6755";
-    context.font = '12px "Segoe UI", sans-serif';
+    context.fillStyle = "#667085";
+    context.font = '12px "Segoe UI", "Malgun Gothic", sans-serif';
     context.textAlign = "center";
     context.fillText(item.label, baseX + columnWidth * 0.5, drawHeight - 12);
   });
 }
 
 function getCurrentMonthSummary() {
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthKey = getCurrentMonthKey();
   const currentTransactions = appState.transactions.filter((entry) => entry.date.startsWith(monthKey));
   const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
-
   const income = currentTransactions
     .filter((entry) => entry.type === "income")
     .reduce((sum, entry) => sum + Number(entry.amount), 0);
@@ -820,11 +638,10 @@ function getMonthlyTrend() {
   for (let offset = 5; offset >= 0; offset -= 1) {
     const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    const label = `${date.getMonth() + 1}월`;
     const monthTransactions = appState.transactions.filter((entry) => entry.date.startsWith(key));
     months.push({
       key,
-      label,
+      label: `${date.getMonth() + 1}월`,
       income: monthTransactions
         .filter((entry) => entry.type === "income")
         .reduce((sum, entry) => sum + Number(entry.amount), 0),
@@ -837,19 +654,45 @@ function getMonthlyTrend() {
   return months;
 }
 
+function readSavedSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    return saved?.householdCode && saved?.householdKey ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeBudgetCode(value) {
+  return String(value || "").trim().replace(/\s+/g, "-").toLowerCase();
+}
+
+async function createHouseholdKey(householdCode, pin) {
+  const source = `jj-crew-budget:${householdCode}:${pin}`;
+  const bytes = new TextEncoder().encode(source);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function getCurrentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function roundRect(context, x, y, width, height, radius) {
   if (height <= 0) {
     return;
   }
 
+  const safeRadius = Math.min(radius, width / 2, height / 2);
   context.beginPath();
-  context.moveTo(x + radius, y);
-  context.lineTo(x + width - radius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
   context.lineTo(x + width, y + height);
   context.lineTo(x, y + height);
-  context.lineTo(x, y + radius);
-  context.quadraticCurveTo(x, y, x + radius, y);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
   context.closePath();
   context.fill();
 }
@@ -864,10 +707,6 @@ function formatCurrency(value) {
 
 function getTodayString() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function isUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
 }
 
 function escapeHtml(value) {

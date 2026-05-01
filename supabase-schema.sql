@@ -1,179 +1,163 @@
 create extension if not exists pgcrypto;
 
-create table if not exists public.households (
+create table if not exists public.shared_fixed_expenses (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
-  invite_code text not null unique,
-  created_by uuid not null references auth.users(id) on delete cascade,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.household_members (
-  household_id uuid not null references public.households(id) on delete cascade,
-  user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null default 'member' check (role in ('owner', 'member')),
-  created_at timestamptz not null default now(),
-  primary key (household_id, user_id)
-);
-
-create table if not exists public.fixed_expenses (
-  id uuid primary key default gen_random_uuid(),
-  household_id uuid not null references public.households(id) on delete cascade,
+  household_key text not null,
   name text not null,
   amount numeric(12, 0) not null check (amount >= 0),
-  created_by uuid not null default auth.uid() references auth.users(id) on delete cascade,
   created_at timestamptz not null default now()
 );
 
-create table if not exists public.transactions (
+create table if not exists public.shared_transactions (
   id uuid primary key default gen_random_uuid(),
-  household_id uuid not null references public.households(id) on delete cascade,
+  household_key text not null,
   date date not null,
   type text not null check (type in ('income', 'expense')),
   category text not null,
   amount numeric(12, 0) not null check (amount >= 0),
   note text not null default '',
-  created_by uuid not null default auth.uid() references auth.users(id) on delete cascade,
   created_at timestamptz not null default now()
 );
 
-alter table public.households enable row level security;
-alter table public.household_members enable row level security;
-alter table public.fixed_expenses enable row level security;
-alter table public.transactions enable row level security;
+create index if not exists shared_fixed_expenses_household_key_idx
+on public.shared_fixed_expenses (household_key);
 
-create or replace function public.generate_invite_code()
+create index if not exists shared_transactions_household_key_date_idx
+on public.shared_transactions (household_key, date desc, created_at desc);
+
+alter table public.shared_fixed_expenses enable row level security;
+alter table public.shared_transactions enable row level security;
+
+revoke all on public.shared_fixed_expenses from anon, authenticated;
+revoke all on public.shared_transactions from anon, authenticated;
+
+create or replace function public.assert_shared_household_key(p_household_key text)
 returns text
 language plpgsql
+immutable
 as $$
-declare
-  new_code text;
 begin
-  loop
-    new_code := upper(substr(encode(gen_random_bytes(6), 'hex'), 1, 8));
-    exit when not exists (
-      select 1
-      from public.households
-      where invite_code = new_code
-    );
-  end loop;
-  return new_code;
+  if p_household_key is null or p_household_key !~ '^[0-9a-f]{64}$' then
+    raise exception '가계부 코드와 PIN을 다시 확인해 주세요.';
+  end if;
+
+  return p_household_key;
 end;
 $$;
 
-create or replace function public.is_household_member(target_household uuid)
-returns boolean
-language sql
-stable
+create or replace function public.get_shared_budget(p_household_key text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
 as $$
-  select exists (
-    select 1
-    from public.household_members
-    where household_id = target_household
-      and user_id = auth.uid()
+declare
+  safe_key text := public.assert_shared_household_key(p_household_key);
+  fixed_items jsonb;
+  transaction_items jsonb;
+begin
+  select coalesce(jsonb_agg(to_jsonb(row_data) order by row_data.amount desc), '[]'::jsonb)
+  into fixed_items
+  from (
+    select id, name, amount, created_at
+    from public.shared_fixed_expenses
+    where household_key = safe_key
+  ) as row_data;
+
+  select coalesce(jsonb_agg(to_jsonb(row_data) order by row_data.date desc, row_data.created_at desc), '[]'::jsonb)
+  into transaction_items
+  from (
+    select id, date, type, category, amount, note, created_at
+    from public.shared_transactions
+    where household_key = safe_key
+  ) as row_data;
+
+  return jsonb_build_object(
+    'fixed_expenses', fixed_items,
+    'transactions', transaction_items
   );
+end;
 $$;
 
-create or replace function public.create_household_with_owner(p_name text)
+create or replace function public.add_shared_fixed_expense(
+  p_household_key text,
+  p_name text,
+  p_amount numeric
+)
 returns uuid
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  new_household_id uuid;
+  safe_key text := public.assert_shared_household_key(p_household_key);
+  new_id uuid;
 begin
-  if auth.uid() is null then
-    raise exception '로그인이 필요합니다.';
+  if trim(coalesce(p_name, '')) = '' or coalesce(p_amount, 0) <= 0 then
+    raise exception '고정비 이름과 금액을 입력해 주세요.';
   end if;
 
-  insert into public.households (name, invite_code, created_by)
-  values (trim(p_name), public.generate_invite_code(), auth.uid())
-  returning id into new_household_id;
+  insert into public.shared_fixed_expenses (household_key, name, amount)
+  values (safe_key, trim(p_name), p_amount)
+  returning id into new_id;
 
-  insert into public.household_members (household_id, user_id, role)
-  values (new_household_id, auth.uid(), 'owner')
-  on conflict do nothing;
-
-  return new_household_id;
+  return new_id;
 end;
 $$;
 
-create or replace function public.join_household_by_invite_code(p_invite_code text)
+create or replace function public.add_shared_transaction(
+  p_household_key text,
+  p_date date,
+  p_type text,
+  p_category text,
+  p_amount numeric,
+  p_note text default ''
+)
 returns uuid
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  target_household_id uuid;
+  safe_key text := public.assert_shared_household_key(p_household_key);
+  new_id uuid;
 begin
-  if auth.uid() is null then
-    raise exception '로그인이 필요합니다.';
+  if p_type not in ('income', 'expense') then
+    raise exception '수입 또는 지출만 저장할 수 있습니다.';
   end if;
 
-  select id
-  into target_household_id
-  from public.households
-  where invite_code = upper(trim(p_invite_code));
-
-  if target_household_id is null then
-    raise exception '초대 코드를 찾을 수 없습니다.';
+  if trim(coalesce(p_category, '')) = '' or coalesce(p_amount, 0) <= 0 then
+    raise exception '카테고리와 금액을 입력해 주세요.';
   end if;
 
-  insert into public.household_members (household_id, user_id, role)
-  values (target_household_id, auth.uid(), 'member')
-  on conflict do nothing;
+  insert into public.shared_transactions (household_key, date, type, category, amount, note)
+  values (safe_key, p_date, p_type, trim(p_category), p_amount, coalesce(p_note, ''))
+  returning id into new_id;
 
-  return target_household_id;
+  return new_id;
 end;
 $$;
 
-drop policy if exists "households_select_for_members" on public.households;
-create policy "households_select_for_members"
-on public.households
-for select
-using (public.is_household_member(id));
-
-drop policy if exists "household_members_select_own_households" on public.household_members;
-create policy "household_members_select_own_households"
-on public.household_members
-for select
-using (user_id = auth.uid());
-
-drop policy if exists "fixed_expenses_select_for_members" on public.fixed_expenses;
-create policy "fixed_expenses_select_for_members"
-on public.fixed_expenses
-for select
-using (public.is_household_member(household_id));
-
-drop policy if exists "fixed_expenses_insert_for_members" on public.fixed_expenses;
-create policy "fixed_expenses_insert_for_members"
-on public.fixed_expenses
-for insert
-with check (public.is_household_member(household_id) and created_by = auth.uid());
-
-drop policy if exists "fixed_expenses_delete_for_members" on public.fixed_expenses;
-create policy "fixed_expenses_delete_for_members"
-on public.fixed_expenses
-for delete
-using (public.is_household_member(household_id));
-
-drop policy if exists "transactions_select_for_members" on public.transactions;
-create policy "transactions_select_for_members"
-on public.transactions
-for select
-using (public.is_household_member(household_id));
-
-drop policy if exists "transactions_insert_for_members" on public.transactions;
-create policy "transactions_insert_for_members"
-on public.transactions
-for insert
-with check (public.is_household_member(household_id) and created_by = auth.uid());
+create or replace function public.delete_shared_fixed_expense(
+  p_household_key text,
+  p_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  safe_key text := public.assert_shared_household_key(p_household_key);
+begin
+  delete from public.shared_fixed_expenses
+  where household_key = safe_key
+    and id = p_id;
+end;
+$$;
 
 grant usage on schema public to anon, authenticated;
-grant select on public.households, public.household_members, public.fixed_expenses, public.transactions to authenticated;
-grant insert, delete on public.fixed_expenses to authenticated;
-grant insert on public.transactions to authenticated;
-grant execute on function public.create_household_with_owner(text) to authenticated;
-grant execute on function public.join_household_by_invite_code(text) to authenticated;
+grant execute on function public.get_shared_budget(text) to anon, authenticated;
+grant execute on function public.add_shared_fixed_expense(text, text, numeric) to anon, authenticated;
+grant execute on function public.add_shared_transaction(text, date, text, text, numeric, text) to anon, authenticated;
+grant execute on function public.delete_shared_fixed_expense(text, uuid) to anon, authenticated;
