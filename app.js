@@ -142,6 +142,7 @@ function renderPreLoginState() {
   elements.setupGuide.classList.add("is-hidden");
   elements.householdPanel.classList.add("is-hidden");
   elements.authError.textContent = "";
+  elements.authModeStatus.textContent = "앱 연결 완료";
 }
 
 function renderWaitingForHousehold() {
