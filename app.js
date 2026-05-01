@@ -56,6 +56,17 @@ function initialize() {
     return;
   }
 
+  const queryAccess = getQueryAccess();
+  if (queryAccess) {
+    renderAccessForm();
+    fillAccessForm(queryAccess.householdCode, queryAccess.pin);
+    elements.authModeStatus.textContent = "링크에 포함된 코드와 PIN으로 입장하는 중...";
+    window.setTimeout(() => {
+      elements.authForm.requestSubmit();
+    }, 0);
+    return;
+  }
+
   const savedSession = readSavedSession();
   if (savedSession) {
     appState.householdCode = savedSession.householdCode;
@@ -89,6 +100,11 @@ function renderAccessForm() {
   elements.authSubmit.textContent = "입장";
   elements.authModeStatus.textContent = "로그인 없이 코드와 PIN으로 연결합니다.";
   elements.authError.textContent = "";
+}
+
+function fillAccessForm(householdCode, pin) {
+  elements.authForm.elements.budgetCode.value = householdCode;
+  elements.authForm.elements.budgetPin.value = pin;
 }
 
 function renderDashboard() {
@@ -629,6 +645,18 @@ function readSavedSession() {
   } catch {
     return null;
   }
+}
+
+function getQueryAccess() {
+  const params = new URLSearchParams(window.location.search);
+  const householdCode = normalizeBudgetCode(params.get("budgetCode"));
+  const pin = String(params.get("budgetPin") || "").trim();
+
+  if (!householdCode || pin.length < 4) {
+    return null;
+  }
+
+  return { householdCode, pin };
 }
 
 function normalizeBudgetCode(value) {
