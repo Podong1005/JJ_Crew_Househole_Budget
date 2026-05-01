@@ -1,21 +1,19 @@
-const PROFILES_KEY = "couple-budget-profiles-v1";
 const ACTIVE_PROFILE_KEY = "couple-budget-active-profile-v1";
 const BUDGET_KEY = "couple-budget-shared-data-v1";
+const DEFAULT_TAB = "monthly";
+
+const USERS = [
+  { id: "husband", name: "우진", avatar: "우" },
+  { id: "wife", name: "하정", avatar: "하" }
+];
 
 const elements = {
   appShell: document.getElementById("appShell"),
   protectedContent: document.getElementById("protectedContent"),
   authPanel: document.getElementById("authPanel"),
-  authForm: document.getElementById("authForm"),
   authError: document.getElementById("authError"),
   profileList: document.getElementById("profileList"),
-  profileEmptyState: document.getElementById("profileEmptyState"),
-  dashboardState: document.getElementById("dashboardState"),
-  householdPanel: document.getElementById("householdPanel"),
-  householdName: document.getElementById("householdName"),
-  householdInviteCode: document.getElementById("householdInviteCode"),
   householdUser: document.getElementById("householdUser"),
-  householdMessage: document.getElementById("householdMessage"),
   refreshButton: document.getElementById("refreshButton"),
   summaryCards: document.getElementById("summaryCards"),
   fixedExpenseForm: document.getElementById("fixedExpenseForm"),
@@ -23,13 +21,16 @@ const elements = {
   transactionForm: document.getElementById("transactionForm"),
   transactionList: document.getElementById("transactionList"),
   monthlyBreakdown: document.getElementById("monthlyBreakdown"),
-  monthlyChart: document.getElementById("monthlyChart")
+  monthlyChart: document.getElementById("monthlyChart"),
+  dailyChart: document.getElementById("dailyChart"),
+  tabButtons: [...document.querySelectorAll("[data-tab]")],
+  tabPanels: [...document.querySelectorAll("[data-tab-panel]")]
 };
 
 const appState = {
-  profiles: loadProfiles(),
   activeProfileId: localStorage.getItem(ACTIVE_PROFILE_KEY),
   activeProfile: null,
+  activeTab: DEFAULT_TAB,
   fixedExpenses: [],
   transactions: []
 };
@@ -38,41 +39,24 @@ initialize();
 
 function initialize() {
   elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
-  elements.authForm.addEventListener("submit", handleCreateProfile);
   elements.profileList.addEventListener("click", handleProfileSelection);
   elements.refreshButton.addEventListener("click", returnToProfileSelect);
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
   elements.transactionForm.addEventListener("submit", handleTransactionSubmit);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
-  window.addEventListener("resize", renderChart);
+  elements.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+  });
+  window.addEventListener("resize", renderVisibleCharts);
 
   loadBudgetState();
-  renderProfilePicker();
 
-  const rememberedProfile = appState.profiles.find((profile) => profile.id === appState.activeProfileId);
+  const rememberedProfile = USERS.find((profile) => profile.id === appState.activeProfileId);
   if (rememberedProfile) {
     activateProfile(rememberedProfile.id);
   } else {
     showProfileSelect();
   }
-}
-
-function loadProfiles() {
-  const saved = localStorage.getItem(PROFILES_KEY);
-  if (!saved) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveProfiles() {
-  localStorage.setItem(PROFILES_KEY, JSON.stringify(appState.profiles));
 }
 
 function loadBudgetState() {
@@ -100,30 +84,6 @@ function saveBudgetState() {
   }));
 }
 
-function handleCreateProfile(event) {
-  event.preventDefault();
-  const profileName = new FormData(event.currentTarget).get("profileName").toString().trim();
-
-  if (!profileName) {
-    elements.authError.textContent = "이름을 입력해 주세요.";
-    return;
-  }
-
-  const duplicate = appState.profiles.find((profile) => profile.name === profileName);
-  if (duplicate) {
-    elements.authError.textContent = "같은 이름의 계정이 이미 있어요. 아래 목록에서 선택해 주세요.";
-    return;
-  }
-
-  const profile = { id: crypto.randomUUID(), name: profileName, createdAt: new Date().toISOString() };
-  appState.profiles.unshift(profile);
-  saveProfiles();
-  event.currentTarget.reset();
-  elements.authError.textContent = "";
-  renderProfilePicker();
-  activateProfile(profile.id);
-}
-
 function handleProfileSelection(event) {
   const button = event.target.closest("[data-profile-id]");
   if (!button) {
@@ -134,7 +94,7 @@ function handleProfileSelection(event) {
 }
 
 function activateProfile(profileId) {
-  const profile = appState.profiles.find((item) => item.id === profileId);
+  const profile = USERS.find((item) => item.id === profileId);
   if (!profile) {
     showProfileSelect();
     return;
@@ -154,43 +114,32 @@ function returnToProfileSelect() {
 }
 
 function showProfileSelect() {
-  elements.appShell.classList.add("page-shell--auth");
+  elements.appShell.classList.add("page-shell--select");
   elements.authPanel.classList.remove("is-hidden");
   elements.protectedContent.classList.add("is-hidden");
-  elements.dashboardState.classList.add("is-hidden");
-  elements.householdPanel.classList.add("is-hidden");
-  renderProfilePicker();
+  elements.authError.textContent = "";
 }
 
 function showDashboard() {
-  elements.appShell.classList.remove("page-shell--auth");
+  elements.appShell.classList.remove("page-shell--select");
   elements.authPanel.classList.add("is-hidden");
   elements.protectedContent.classList.remove("is-hidden");
-  elements.dashboardState.classList.add("is-hidden");
-  elements.householdPanel.classList.remove("is-hidden");
-  elements.householdName.textContent = "우리집 가계부";
-  elements.householdInviteCode.textContent = appState.activeProfile.name;
   elements.householdUser.textContent = appState.activeProfile.name;
-  elements.householdMessage.textContent = "계정 목록으로 돌아가려면 '계정 목록으로'를 눌러 주세요.";
   render();
+  setActiveTab(DEFAULT_TAB);
 }
 
-function renderProfilePicker() {
-  const hasProfiles = appState.profiles.length > 0;
-  elements.profileEmptyState.classList.toggle("is-hidden", hasProfiles);
-
-  if (!hasProfiles) {
-    elements.profileList.innerHTML = "";
-    return;
-  }
-
-  elements.profileList.innerHTML = appState.profiles.map((profile) => `
-    <button type="button" class="profile-card" data-profile-id="${profile.id}">
-      <span class="profile-card__avatar">${escapeHtml(profile.name.slice(0, 1).toUpperCase())}</span>
-      <span class="profile-card__name">${escapeHtml(profile.name)}</span>
-      <span class="profile-card__hint">이 계정으로 들어가기</span>
-    </button>
-  `).join("");
+function setActiveTab(tabName) {
+  appState.activeTab = tabName;
+  elements.tabButtons.forEach((button) => {
+    const isActive = button.dataset.tab === tabName;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  });
+  elements.tabPanels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.tabPanel === tabName);
+  });
+  renderVisibleCharts();
 }
 
 function handleFixedExpenseSubmit(event) {
@@ -206,7 +155,13 @@ function handleFixedExpenseSubmit(event) {
     return;
   }
 
-  appState.fixedExpenses.unshift({ id: crypto.randomUUID(), name, amount, createdBy: appState.activeProfile.name });
+  appState.fixedExpenses.unshift({
+    id: crypto.randomUUID(),
+    name,
+    amount,
+    createdBy: appState.activeProfile.name,
+    createdAt: new Date().toISOString()
+  });
   event.currentTarget.reset();
   saveBudgetState();
   render();
@@ -254,21 +209,24 @@ function handleFixedExpenseDelete(event) {
 
 function render() {
   renderSummaryCards();
-  renderFixedExpenses();
   renderMonthlyBreakdown();
+  renderFixedExpenses();
   renderTransactions();
-  renderChart();
+  renderVisibleCharts();
 }
 
 function renderSummaryCards() {
   const monthly = getCurrentMonthSummary();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
-  const savingsRate = monthly.income > 0 ? Math.round((monthly.savings / monthly.income) * 100) : 0;
+  const fixedTotal = getFixedExpenseTotal();
+  const totalExpense = monthly.expense + fixedTotal;
+  const savings = monthly.income - totalExpense;
+  const savingsRate = monthly.income > 0 ? Math.round((savings / monthly.income) * 100) : 0;
 
   const cards = [
-    { title: "이번 달 수입", value: formatCurrency(monthly.income), className: "amount amount--income", subtext: "이번 달에 기록된 모든 수입 합계" },
-    { title: "이번 달 소비", value: formatCurrency(monthly.expense + fixedTotal), className: "amount amount--expense", subtext: `고정비 ${formatCurrency(fixedTotal)} 포함` },
-    { title: "예상 저축", value: formatCurrency(monthly.savings), className: `amount ${monthly.savings >= 0 ? "amount--saving" : "amount--expense"}`, subtext: `저축률 ${savingsRate}%` }
+    { title: "이번 달 수입", value: formatCurrency(monthly.income), className: "amount amount--income", subtext: "등록된 수입 합계" },
+    { title: "이번 달 지출", value: formatCurrency(totalExpense), className: "amount amount--expense", subtext: `고정비 ${formatCurrency(fixedTotal)} 포함` },
+    { title: "예상 저축", value: formatCurrency(savings), className: `amount ${savings >= 0 ? "amount--saving" : "amount--expense"}`, subtext: `저축률 ${savingsRate}%` },
+    { title: "작성자", value: appState.activeProfile?.name || "미선택", className: "amount", subtext: "새 내역에 저장될 사용자" }
   ];
 
   elements.summaryCards.innerHTML = cards.map((card) => `
@@ -280,41 +238,20 @@ function renderSummaryCards() {
   `).join("");
 }
 
-function renderFixedExpenses() {
-  if (appState.fixedExpenses.length === 0) {
-    elements.fixedExpenseList.innerHTML = '<div class="empty-state">아직 등록된 고정비가 없어요.</div>';
-    return;
-  }
-
-  elements.fixedExpenseList.innerHTML = [...appState.fixedExpenses]
-    .sort((a, b) => Number(b.amount) - Number(a.amount))
-    .map((item) => `
-      <article class="fixed-item">
-        <div class="fixed-item__meta">
-          <h3>${escapeHtml(item.name)}</h3>
-          <p>${escapeHtml(item.createdBy || "기록자 없음")}</p>
-        </div>
-        <div class="fixed-item__actions">
-          <div class="amount amount--expense">${formatCurrency(item.amount)}</div>
-          <button type="button" data-delete-id="${item.id}">삭제</button>
-        </div>
-      </article>
-    `).join("");
-}
-
 function renderMonthlyBreakdown() {
   const current = getCurrentMonthSummary();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedTotal = getFixedExpenseTotal();
   const totalExpense = current.expense + fixedTotal;
+  const savings = current.income - totalExpense;
   const average = getMonthlyAverageExpense();
 
   const cards = [
-    { title: "고정비 합계", value: formatCurrency(fixedTotal), helper: "매달 반복 비용" },
-    { title: "변동 지출", value: formatCurrency(current.expense), helper: "식비, 교통, 쇼핑 등" },
-    { title: "월 평균 소비", value: formatCurrency(average), helper: "최근 기록 기준" },
-    { title: "총 소비", value: formatCurrency(totalExpense), helper: "고정비 + 변동 지출" },
+    { title: "고정비 합계", value: formatCurrency(fixedTotal), helper: "매월 반복 비용" },
+    { title: "변동 지출", value: formatCurrency(current.expense), helper: "이번 달 일반 지출" },
+    { title: "월 평균 지출", value: formatCurrency(average), helper: "최근 6개월 기준" },
+    { title: "총 지출", value: formatCurrency(totalExpense), helper: "고정비 + 변동 지출" },
     { title: "총 수입", value: formatCurrency(current.income), helper: "이번 달 수입 합계" },
-    { title: "남은 저축 여력", value: formatCurrency(current.savings), helper: "수입 - 총 소비" }
+    { title: "남은 금액", value: formatCurrency(savings), helper: "수입 - 총 지출" }
   ];
 
   elements.monthlyBreakdown.innerHTML = cards.map((card) => `
@@ -326,19 +263,44 @@ function renderMonthlyBreakdown() {
   `).join("");
 }
 
-function renderTransactions() {
-  const sorted = [...appState.transactions].sort((a, b) => `${b.date}${b.createdAt || ""}`.localeCompare(`${a.date}${a.createdAt || ""}`));
-  if (sorted.length === 0) {
-    elements.transactionList.innerHTML = '<div class="empty-state">아직 기록된 수입 / 지출 내역이 없어요.</div>';
+function renderFixedExpenses() {
+  if (appState.fixedExpenses.length === 0) {
+    elements.fixedExpenseList.innerHTML = '<div class="empty-state">아직 등록된 고정비가 없습니다.</div>';
     return;
   }
 
-  const rows = sorted.slice(0, 12).map((entry) => `
+  elements.fixedExpenseList.innerHTML = [...appState.fixedExpenses]
+    .sort((a, b) => Number(b.amount) - Number(a.amount))
+    .map((item) => `
+      <article class="fixed-item">
+        <div class="fixed-item__meta">
+          <h3>${escapeHtml(item.name)}</h3>
+          <p>${escapeHtml(item.createdBy || "미지정")} 등록</p>
+        </div>
+        <div class="fixed-item__actions">
+          <div class="amount amount--expense">${formatCurrency(item.amount)}</div>
+          <button type="button" data-delete-id="${item.id}">삭제</button>
+        </div>
+      </article>
+    `).join("");
+}
+
+function renderTransactions() {
+  const sorted = [...appState.transactions]
+    .sort((a, b) => `${b.date}${b.createdAt || ""}`.localeCompare(`${a.date}${a.createdAt || ""}`));
+
+  if (sorted.length === 0) {
+    elements.transactionList.innerHTML = '<div class="empty-state">아직 기록된 수입 / 지출 내역이 없습니다.</div>';
+    return;
+  }
+
+  const rows = sorted.map((entry) => `
     <tr>
       <td>${entry.date}</td>
       <td><span class="pill pill--${entry.type}">${entry.type === "income" ? "수입" : "지출"}</span></td>
       <td>${escapeHtml(entry.category)}</td>
-      <td>${escapeHtml(entry.note || "-")}<br><span class="table-meta">${escapeHtml(entry.createdBy || "")}</span></td>
+      <td>${escapeHtml(entry.createdBy || "미지정")}</td>
+      <td>${escapeHtml(entry.note || "-")}</td>
       <td class="amount ${entry.type === "income" ? "amount--income" : "amount--expense"}">${formatCurrency(entry.amount)}</td>
     </tr>
   `).join("");
@@ -350,6 +312,7 @@ function renderTransactions() {
           <th>날짜</th>
           <th>구분</th>
           <th>카테고리</th>
+          <th>작성자</th>
           <th>메모</th>
           <th>금액</th>
         </tr>
@@ -359,17 +322,27 @@ function renderTransactions() {
   `;
 }
 
-function renderChart() {
-  const canvas = elements.monthlyChart;
-  const context = canvas.getContext("2d");
-  const chartData = getMonthlyTrend();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
-  const expenses = chartData.map((item) => item.expense + fixedTotal);
-  const savings = chartData.map((item) => item.income - (item.expense + fixedTotal));
-  const maxPositive = Math.max(...expenses, ...savings.filter((value) => value > 0), 100000);
-  const maxNegative = Math.min(...savings.filter((value) => value < 0), 0);
+function renderVisibleCharts() {
+  if (appState.activeTab === "monthly") {
+    renderGroupedBarChart(elements.monthlyChart, getMonthlyTrend(), { includeFixedExpense: true });
+  }
+  if (appState.activeTab === "daily") {
+    renderGroupedBarChart(elements.dailyChart, getDailyTrend(), { includeFixedExpense: false });
+  }
+}
 
-  const width = canvas.clientWidth * window.devicePixelRatio;
+function renderGroupedBarChart(canvas, chartData, options = {}) {
+  if (!canvas) {
+    return;
+  }
+
+  const context = canvas.getContext("2d");
+  const fixedTotal = options.includeFixedExpense ? getFixedExpenseTotal() : 0;
+  const incomes = chartData.map((item) => item.income);
+  const expenses = chartData.map((item) => item.expense + fixedTotal);
+  const maxValue = Math.max(...incomes, ...expenses, 100000);
+
+  const width = Math.max(canvas.clientWidth, 320) * window.devicePixelRatio;
   const height = canvas.clientHeight * window.devicePixelRatio;
   canvas.width = width;
   canvas.height = height;
@@ -379,51 +352,35 @@ function renderChart() {
   const drawHeight = canvas.clientHeight;
   context.clearRect(0, 0, drawWidth, drawHeight);
 
-  const padding = { top: 20, right: 24, bottom: 36, left: 24 };
+  const padding = { top: 18, right: 18, bottom: 34, left: 18 };
   const chartHeight = drawHeight - padding.top - padding.bottom;
   const columnWidth = (drawWidth - padding.left - padding.right) / Math.max(chartData.length, 1);
-  const zeroLineRatio = maxNegative < 0 ? maxPositive / (maxPositive + Math.abs(maxNegative)) : 1;
-  const zeroY = padding.top + chartHeight * zeroLineRatio;
+  const barWidth = Math.min(24, columnWidth * 0.25);
+  const baseline = padding.top + chartHeight;
 
-  context.strokeStyle = "rgba(109, 71, 44, 0.12)";
+  context.strokeStyle = "rgba(84, 96, 112, 0.14)";
   context.lineWidth = 1;
-  for (let i = 0; i < 4; i += 1) {
-    const y = padding.top + (chartHeight / 3) * i;
+  for (let index = 0; index < 4; index += 1) {
+    const y = padding.top + (chartHeight / 3) * index;
     context.beginPath();
     context.moveTo(padding.left, y);
     context.lineTo(drawWidth - padding.right, y);
     context.stroke();
   }
 
-  context.strokeStyle = "rgba(109, 71, 44, 0.22)";
-  context.beginPath();
-  context.moveTo(padding.left, zeroY);
-  context.lineTo(drawWidth - padding.right, zeroY);
-  context.stroke();
-
   chartData.forEach((item, index) => {
-    const expenseValue = expenses[index];
-    const savingsValue = savings[index];
     const baseX = padding.left + index * columnWidth;
-    const expenseBarHeight = (expenseValue / maxPositive) * chartHeight * zeroLineRatio;
-    const positiveSavingsHeight = savingsValue > 0 ? (savingsValue / maxPositive) * chartHeight * zeroLineRatio : 0;
-    const negativeSavingsHeight = savingsValue < 0 && maxNegative !== 0 ? (Math.abs(savingsValue) / Math.abs(maxNegative)) * chartHeight * (1 - zeroLineRatio) : 0;
-    const barWidth = Math.min(26, columnWidth * 0.28);
+    const incomeHeight = (incomes[index] / maxValue) * chartHeight;
+    const expenseHeight = (expenses[index] / maxValue) * chartHeight;
 
-    context.fillStyle = "#d95d39";
-    roundRect(context, baseX + columnWidth * 0.15, zeroY - expenseBarHeight, barWidth, expenseBarHeight, 10);
+    context.fillStyle = "#2563eb";
+    roundRect(context, baseX + columnWidth * 0.22, baseline - incomeHeight, barWidth, incomeHeight, 8);
 
-    if (negativeSavingsHeight > 0) {
-      context.fillStyle = "#8f3d2f";
-      roundRect(context, baseX + columnWidth * 0.55, zeroY, barWidth, negativeSavingsHeight, 10);
-    }
-    if (positiveSavingsHeight > 0) {
-      context.fillStyle = "#2e8b57";
-      roundRect(context, baseX + columnWidth * 0.55, zeroY - positiveSavingsHeight, barWidth, positiveSavingsHeight, 10);
-    }
+    context.fillStyle = "#dc2626";
+    roundRect(context, baseX + columnWidth * 0.55, baseline - expenseHeight, barWidth, expenseHeight, 8);
 
-    context.fillStyle = "#7f6755";
-    context.font = '12px "Segoe UI", sans-serif';
+    context.fillStyle = "#667085";
+    context.font = '12px "Segoe UI", "Malgun Gothic", sans-serif';
     context.textAlign = "center";
     context.fillText(item.label, baseX + columnWidth * 0.5, drawHeight - 12);
   });
@@ -433,17 +390,12 @@ function getCurrentMonthSummary() {
   const now = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const currentTransactions = appState.transactions.filter((entry) => entry.date.startsWith(monthKey));
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
-
-  const income = currentTransactions.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + Number(entry.amount), 0);
-  const expense = currentTransactions.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + Number(entry.amount), 0);
-
-  return { income, expense, savings: income - (expense + fixedTotal) };
+  return summarizeTransactions(currentTransactions);
 }
 
 function getMonthlyAverageExpense() {
   const trend = getMonthlyTrend();
-  const fixedTotal = appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  const fixedTotal = getFixedExpenseTotal();
   const totals = trend.map((item) => item.expense + fixedTotal);
   return totals.length ? totals.reduce((sum, value) => sum + value, 0) / totals.length : 0;
 }
@@ -454,36 +406,74 @@ function getMonthlyTrend() {
   for (let offset = 5; offset >= 0; offset -= 1) {
     const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    const label = `${date.getMonth() + 1}월`;
     const monthTransactions = appState.transactions.filter((entry) => entry.date.startsWith(key));
     months.push({
       key,
-      label,
-      income: monthTransactions.filter((entry) => entry.type === "income").reduce((sum, entry) => sum + Number(entry.amount), 0),
-      expense: monthTransactions.filter((entry) => entry.type === "expense").reduce((sum, entry) => sum + Number(entry.amount), 0)
+      label: `${date.getMonth() + 1}월`,
+      ...summarizeTransactions(monthTransactions)
     });
   }
   return months;
+}
+
+function getDailyTrend() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = [];
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dailyTransactions = appState.transactions.filter((entry) => entry.date === key);
+    days.push({
+      key,
+      label: String(day),
+      ...summarizeTransactions(dailyTransactions)
+    });
+  }
+  return days;
+}
+
+function summarizeTransactions(transactions) {
+  return {
+    income: transactions
+      .filter((entry) => entry.type === "income")
+      .reduce((sum, entry) => sum + Number(entry.amount), 0),
+    expense: transactions
+      .filter((entry) => entry.type === "expense")
+      .reduce((sum, entry) => sum + Number(entry.amount), 0)
+  };
+}
+
+function getFixedExpenseTotal() {
+  return appState.fixedExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
 }
 
 function roundRect(context, x, y, width, height, radius) {
   if (height <= 0) {
     return;
   }
+
+  const safeRadius = Math.min(radius, width / 2, height / 2);
   context.beginPath();
-  context.moveTo(x + radius, y);
-  context.lineTo(x + width - radius, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + radius);
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
   context.lineTo(x + width, y + height);
   context.lineTo(x, y + height);
-  context.lineTo(x, y + radius);
-  context.quadraticCurveTo(x, y, x + radius, y);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
   context.closePath();
   context.fill();
 }
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW", maximumFractionDigits: 0 }).format(Number(value) || 0);
+  return new Intl.NumberFormat("ko-KR", {
+    style: "currency",
+    currency: "KRW",
+    maximumFractionDigits: 0
+  }).format(Number(value) || 0);
 }
 
 function getTodayString() {

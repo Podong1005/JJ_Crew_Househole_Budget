@@ -3,182 +3,178 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>우리집 가계부</title>
+  <title>부부 공동 가계부</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="page-shell page-shell--auth" id="appShell">
-    <section class="panel panel--wide auth-panel" id="authPanel">
-      <div class="auth-panel__intro">
-        <div>
-          <p class="section-heading__eyebrow">User Select</p>
-          <h2 id="authTitle">사용자를 선택해 주세요</h2>
-          <p class="subtext auth-panel__description" id="authDescription">
-            처음 방문했다면 내 계정을 만들고, 이전에 방문했다면 내 계정을 눌러 바로 들어갈 수 있어요.
-          </p>
-        </div>
-        <div class="auth-panel__status">
-          <span class="badge">간편 접속</span>
-          <p class="subtext">이 브라우저에 저장된 계정을 선택해서 입장</p>
-        </div>
+  <div class="page-shell page-shell--select" id="appShell">
+    <section class="select-panel" id="authPanel">
+      <div class="select-panel__header">
+        <p class="eyebrow">Household Budget</p>
+        <h1>누가 기록하나요?</h1>
+        <p class="subtext">수입과 지출을 우진/하정 기준으로 구분해서 저장합니다.</p>
       </div>
 
-      <form id="authForm" class="entry-form auth-form">
-        <label>
-          내 이름
-          <input type="text" name="profileName" placeholder="예: 민수, 지연" required>
-        </label>
-        <button type="submit" id="authSubmit">내 계정 만들기</button>
-      </form>
-
-      <div class="profile-picker">
-        <div class="profile-picker__header">
-          <p class="mode-text" id="authModeStatus">기존 계정 선택</p>
-        </div>
-        <div class="profile-list" id="profileList"></div>
-        <p class="empty-state is-hidden" id="profileEmptyState">아직 만들어진 계정이 없어요. 위에서 내 계정을 먼저 만들어 주세요.</p>
+      <div class="user-picker" id="profileList" aria-label="사용자 선택">
+        <button type="button" class="user-card" data-profile-id="husband">
+          <span class="user-card__avatar">우</span>
+          <span class="user-card__name">우진</span>
+          <span class="user-card__hint">우진으로 기록 시작</span>
+        </button>
+        <button type="button" class="user-card" data-profile-id="wife">
+          <span class="user-card__avatar">하</span>
+          <span class="user-card__name">하정</span>
+          <span class="user-card__hint">하정으로 기록 시작</span>
+        </button>
       </div>
-      <p class="error-text" id="authError"></p>
+
+      <p class="error-text" id="authError" role="status"></p>
     </section>
 
     <div class="protected-content is-hidden" id="protectedContent">
-      <header class="hero">
-        <div class="hero__content">
-          <p class="eyebrow">Household Budget Planner</p>
-          <h1>아내와 함께 보는<br>우리집 가계부</h1>
-          <p class="hero__description">
-            고정비와 일상 지출을 함께 기록하고, 월별 소비와 저축 흐름을 한눈에 확인해보세요.
-          </p>
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Couple Budget</p>
+          <h1>부부 공동 가계부</h1>
+          <p class="subtext">고정비와 일상 수입/지출을 함께 기록하고 흐름을 확인합니다.</p>
         </div>
-        <div class="hero__summary" id="summaryCards"></div>
+        <div class="current-user">
+          <span class="current-user__label">현재 사용자</span>
+          <strong id="householdUser">미선택</strong>
+          <button type="button" class="ghost-button" id="refreshButton">사용자 변경</button>
+        </div>
       </header>
 
-      <section class="panel panel--wide state-panel is-hidden" id="dashboardState">
-        <div class="section-heading">
-          <div>
-            <p class="section-heading__eyebrow">Setup</p>
-            <h2>공동 사용 준비</h2>
-          </div>
-        </div>
-        <div class="setup-guide is-hidden" id="setupGuide">
-          <p>먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.</p>
-          <p>그 다음 이 페이지를 웹에 올리면 아내와 내가 각자 휴대폰이나 컴퓨터에서 같은 주소로 접속할 수 있습니다.</p>
-        </div>
-      </section>
+      <section class="summary-grid" id="summaryCards" aria-label="이번 달 요약"></section>
 
-      <section class="panel panel--wide household-panel is-hidden" id="householdPanel">
-        <div class="household-panel__header">
-          <div>
-            <p class="section-heading__eyebrow">Current User</p>
-            <h2 id="householdName">우리집 가계부</h2>
-            <p class="subtext">현재 접속 사용자: <strong id="householdInviteCode">-</strong></p>
-          </div>
-          <div class="household-panel__actions">
-            <div class="mini-card">
-              <span class="mini-card__label">선택된 계정</span>
-              <strong id="householdUser">로그인되지 않음</strong>
-            </div>
-            <button type="button" class="ghost-button" id="refreshButton">계정 목록으로</button>
-            <button type="button" class="ghost-button is-hidden" id="signOutButton">로그아웃</button>
-          </div>
-        </div>
+      <nav class="tab-nav" aria-label="가계부 메뉴">
+        <button type="button" class="tab-button" data-tab="monthly">월별 통계</button>
+        <button type="button" class="tab-button" data-tab="daily">일별 통계</button>
+        <button type="button" class="tab-button" data-tab="entry">수입 / 지출 입력</button>
+        <button type="button" class="tab-button" data-tab="fixed">고정비 관리</button>
+        <button type="button" class="tab-button" data-tab="history">전체 내역</button>
+      </nav>
 
-        <p class="subtext" id="householdMessage"></p>
-      </section>
-
-      <main class="dashboard">
-        <section class="panel panel--wide">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Quick Overview</p>
-              <h2>월별 소비와 저축 흐름</h2>
+      <main class="tab-panels">
+        <section class="tab-panel" data-tab-panel="monthly">
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Monthly Statistics</p>
+                <h2>월별 수입 / 지출 흐름</h2>
+              </div>
             </div>
-          </div>
-          <div class="chart-card">
-            <div class="chart-legend">
-              <span><i class="legend-swatch legend-swatch--expense"></i>소비</span>
-              <span><i class="legend-swatch legend-swatch--saving"></i>저축</span>
+            <div id="monthlyBreakdown" class="insight-grid"></div>
+            <div class="chart-card">
+              <div class="chart-legend">
+                <span><i class="legend-swatch legend-swatch--income"></i>수입</span>
+                <span><i class="legend-swatch legend-swatch--expense"></i>지출</span>
+              </div>
+              <canvas id="monthlyChart" height="300" aria-label="월별 수입 지출 그래프"></canvas>
             </div>
-            <canvas id="monthlyChart" height="280" aria-label="월별 소비 및 저축 그래프"></canvas>
           </div>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Fixed Costs</p>
-              <h2>고정비 기록</h2>
+        <section class="tab-panel" data-tab-panel="daily">
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Daily Statistics</p>
+                <h2>이번 달 일별 수입 / 지출</h2>
+              </div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-legend">
+                <span><i class="legend-swatch legend-swatch--income"></i>수입</span>
+                <span><i class="legend-swatch legend-swatch--expense"></i>지출</span>
+              </div>
+              <canvas id="dailyChart" height="300" aria-label="일별 수입 지출 그래프"></canvas>
             </div>
           </div>
-          <form id="fixedExpenseForm" class="entry-form">
-            <label>
-              항목명
-              <input type="text" name="name" placeholder="예: 월세, 통신비" required>
-            </label>
-            <label>
-              월 금액
-              <input type="number" name="amount" min="0" step="1000" placeholder="예: 850000" required>
-            </label>
-            <button type="submit">고정비 추가</button>
-          </form>
-          <div id="fixedExpenseList" class="stack-list"></div>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Transactions</p>
-              <h2>수입 / 지출 기록</h2>
+        <section class="tab-panel" data-tab-panel="entry">
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Transaction Entry</p>
+                <h2>수입 / 지출 입력</h2>
+              </div>
             </div>
+            <form id="transactionForm" class="entry-form">
+              <label>
+                날짜
+                <input type="date" name="date" required>
+              </label>
+              <label>
+                구분
+                <select name="type" required>
+                  <option value="income">수입</option>
+                  <option value="expense">지출</option>
+                </select>
+              </label>
+              <label>
+                카테고리
+                <input type="text" name="category" placeholder="예: 급여, 식비, 교통비" required>
+              </label>
+              <label>
+                금액
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 50000" required>
+              </label>
+              <label class="entry-form__wide">
+                메모
+                <input type="text" name="note" placeholder="선택 사항">
+              </label>
+              <button type="submit">내역 저장</button>
+            </form>
           </div>
-          <form id="transactionForm" class="entry-form">
-            <label>
-              날짜
-              <input type="date" name="date" required>
-            </label>
-            <label>
-              구분
-              <select name="type" required>
-                <option value="income">수입</option>
-                <option value="expense">지출</option>
-              </select>
-            </label>
-            <label>
-              카테고리
-              <input type="text" name="category" placeholder="예: 식비, 급여" required>
-            </label>
-            <label>
-              금액
-              <input type="number" name="amount" min="0" step="1000" placeholder="예: 50000" required>
-            </label>
-            <label>
-              메모
-              <input type="text" name="note" placeholder="선택 사항">
-            </label>
-            <button type="submit">내역 저장</button>
-          </form>
         </section>
 
-        <section class="panel">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Monthly Snapshot</p>
-              <h2>이번 달 요약</h2>
+        <section class="tab-panel" data-tab-panel="fixed">
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Fixed Costs</p>
+                <h2>고정비 관리</h2>
+              </div>
             </div>
+            <form id="fixedExpenseForm" class="entry-form">
+              <label>
+                항목명
+                <input type="text" name="name" placeholder="예: 월세, 통신비, 보험료" required>
+              </label>
+              <label>
+                금액
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 850000" required>
+              </label>
+              <button type="submit">고정비 추가</button>
+            </form>
+            <div id="fixedExpenseList" class="stack-list"></div>
           </div>
-          <div id="monthlyBreakdown" class="insight-grid"></div>
         </section>
 
-        <section class="panel panel--wide">
-          <div class="section-heading">
-            <div>
-              <p class="section-heading__eyebrow">Recent Activity</p>
-              <h2>최근 수입 / 지출 내역</h2>
+        <section class="tab-panel" data-tab-panel="history">
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">History</p>
+                <h2>전체 내역</h2>
+              </div>
             </div>
+            <div id="transactionList" class="table-card"></div>
           </div>
-          <div id="transactionList" class="table-card"></div>
         </section>
       </main>
+
+      <div class="legacy-hidden" aria-hidden="true">
+        <form id="authForm"></form>
+        <p id="profileEmptyState"></p>
+        <section id="dashboardState"></section>
+        <section id="householdPanel"></section>
+        <span id="householdName"></span>
+        <span id="householdInviteCode"></span>
+        <p id="householdMessage"></p>
+      </div>
     </div>
   </div>
 
