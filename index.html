@@ -65,7 +65,8 @@
       <nav class="tab-nav" aria-label="가계부 메뉴">
         <button type="button" class="tab-button is-active" data-tab="daily">일별 통계</button>
         <button type="button" class="tab-button" data-tab="monthly">월별 통계</button>
-        <button type="button" class="tab-button" data-tab="entry">수입 / 지출 내역</button>
+        <button type="button" class="tab-button" data-tab="income">수입 입력</button>
+        <button type="button" class="tab-button" data-tab="expense">지출 입력</button>
         <button type="button" class="tab-button" data-tab="fixed">고정비 관리</button>
         <button type="button" class="tab-button" data-tab="history">전체 내역</button>
       </nav>
@@ -110,29 +111,69 @@
           </div>
         </section>
 
-        <section class="tab-panel" data-tab-panel="entry">
+        <section class="tab-panel" data-tab-panel="income">
           <div class="panel">
             <div class="section-heading">
               <div>
-                <p class="section-heading__eyebrow">Transaction Entry</p>
-                <h2>수입 / 지출 입력</h2>
+                <p class="section-heading__eyebrow">Income Entry</p>
+                <h2>수입 입력</h2>
               </div>
             </div>
-            <form id="transactionForm" class="entry-form">
+            <form id="incomeForm" class="entry-form">
               <label>
                 날짜
                 <input type="date" name="date" required>
               </label>
               <label>
-                구분
-                <select name="type" required>
-                  <option value="income">수입</option>
-                  <option value="expense">지출</option>
+                카테고리
+                <select name="category" required>
+                  <option value="">선택해 주세요</option>
+                  <option value="월급">월급</option>
                 </select>
               </label>
               <label>
+                금액
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 50000" required>
+              </label>
+              <label class="entry-form__wide">
+                메모
+                <input type="text" name="note" placeholder="선택 사항">
+              </label>
+              <button type="submit">내역 저장</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="expense">
+          <div class="panel">
+            <div class="section-heading">
+              <div>
+                <p class="section-heading__eyebrow">Expense Entry</p>
+                <h2>지출 입력</h2>
+              </div>
+            </div>
+            <form id="expenseForm" class="entry-form">
+              <label>
+                날짜
+                <input type="date" name="date" required>
+              </label>
+              <label>
                 카테고리
-                <input type="text" name="category" placeholder="예: 급여, 식비, 교통비" required>
+                <select name="category" required>
+                  <option value="">선택해 주세요</option>
+                  <option value="식비">식비</option>
+                  <option value="카페/간식">카페/간식</option>
+                  <option value="생활용품">생활용품</option>
+                  <option value="교통">교통</option>
+                  <option value="쇼핑">쇼핑</option>
+                  <option value="문화/여가">문화/여가</option>
+                  <option value="데이트/가족">데이트/가족</option>
+                  <option value="건강/의료">건강/의료</option>
+                  <option value="미용">미용</option>
+                  <option value="경조사/선물">경조사/선물</option>
+                  <option value="여행/나들이">여행/나들이</option>
+                  <option value="기타">기타</option>
+                </select>
               </label>
               <label>
                 금액
@@ -161,8 +202,23 @@
                 <input type="date" name="date" required>
               </label>
               <label>
-                항목명
-                <input type="text" name="name" placeholder="예: 월세, 통신비, 보험료" required>
+                카테고리
+                <select name="name" required>
+                  <option value="">선택해 주세요</option>
+                  <option value="주거비">주거비</option>
+                  <option value="관리비/공과금">관리비/공과금</option>
+                  <option value="통신비">통신비</option>
+                  <option value="보험료">보험료</option>
+                  <option value="구독료">구독료</option>
+                  <option value="대출/할부">대출/할부</option>
+                  <option value="교통 고정비">교통 고정비</option>
+                  <option value="차량 유지비">차량 유지비</option>
+                  <option value="교육비">교육비</option>
+                  <option value="가족/용돈">가족/용돈</option>
+                  <option value="저축/투자">저축/투자</option>
+                  <option value="세금">세금</option>
+                  <option value="기타 고정비">기타 고정비</option>
+                </select>
               </label>
               <label>
                 금액

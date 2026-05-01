@@ -26,7 +26,8 @@ const elements = {
   summaryCards: document.getElementById("summaryCards"),
   fixedExpenseForm: document.getElementById("fixedExpenseForm"),
   fixedExpenseList: document.getElementById("fixedExpenseList"),
-  transactionForm: document.getElementById("transactionForm"),
+  incomeForm: document.getElementById("incomeForm"),
+  expenseForm: document.getElementById("expenseForm"),
   transactionList: document.getElementById("transactionList"),
   dailyBreakdown: document.getElementById("dailyBreakdown"),
   dailyChart: document.getElementById("dailyChart"),
@@ -48,13 +49,15 @@ const appState = {
 initialize();
 
 function initialize() {
-  elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
+  elements.incomeForm.querySelector('input[name="date"]').value = getTodayString();
+  elements.expenseForm.querySelector('input[name="date"]').value = getTodayString();
   elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
   elements.authForm.addEventListener("submit", handleBudgetAccess);
   elements.signOutButton.addEventListener("click", handleChangeBudget);
   elements.refreshButton.addEventListener("click", handleRefresh);
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
-  elements.transactionForm.addEventListener("submit", handleTransactionSubmit);
+  elements.incomeForm.addEventListener("submit", handleIncomeSubmit);
+  elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
   elements.transactionList.addEventListener("click", handleTransactionDelete);
   elements.tabButtons.forEach((button) => {
@@ -277,7 +280,15 @@ async function handleFixedExpenseSubmit(event) {
   await loadBudgetData();
 }
 
-async function handleTransactionSubmit(event) {
+async function handleIncomeSubmit(event) {
+  await handleTransactionSubmit(event, "income", elements.incomeForm);
+}
+
+async function handleExpenseSubmit(event) {
+  await handleTransactionSubmit(event, "expense", elements.expenseForm);
+}
+
+async function handleTransactionSubmit(event, type, formElement) {
   event.preventDefault();
   if (!appState.householdKey) {
     return;
@@ -286,7 +297,7 @@ async function handleTransactionSubmit(event) {
   const formData = new FormData(event.currentTarget);
   const transaction = {
     date: String(formData.get("date") || ""),
-    type: String(formData.get("type") || ""),
+    type,
     category: String(formData.get("category") || "").trim(),
     amount: Number(formData.get("amount")),
     note: String(formData.get("note") || "").trim()
@@ -311,7 +322,7 @@ async function handleTransactionSubmit(event) {
   }
 
   event.currentTarget.reset();
-  elements.transactionForm.querySelector('input[name="date"]').value = getTodayString();
+  formElement.querySelector('input[name="date"]').value = getTodayString();
   await loadBudgetData();
 }
 
