@@ -1,3 +1,4 @@
+(() => {
 const SESSION_KEY = "jj-crew-budget-session-v2";
 const LEGACY_SHARED_STORAGE_KEY = "couple-budget-shared-data-v1";
 const LEGACY_MIGRATION_PREFIX = "jj-crew-shared-migrated-";
@@ -746,3 +747,4 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+})();
