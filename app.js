@@ -4,10 +4,6 @@ const LEGACY_MIGRATION_PREFIX = "jj-crew-shared-migrated-";
 
 const config = window.BUDGET_APP_CONFIG || {};
 const hasSupabaseConfig = Boolean(config.supabaseUrl && config.supabaseAnonKey);
-const hasSupabaseClient = Boolean(window.supabase?.createClient);
-const supabase = hasSupabaseConfig && hasSupabaseClient
-  ? window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey)
-  : null;
 
 const elements = {
   appShell: document.getElementById("appShell"),
@@ -40,7 +36,6 @@ const appState = {
   householdKey: "",
   fixedExpenses: [],
   transactions: [],
-  channel: null,
   pollTimer: null
 };
 
@@ -56,7 +51,7 @@ function initialize() {
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
   window.addEventListener("resize", renderChart);
 
-  if (!hasSupabaseConfig || !hasSupabaseClient) {
+  if (!hasSupabaseConfig) {
     renderSetupRequired();
     return;
   }
@@ -66,7 +61,6 @@ function initialize() {
     appState.householdCode = savedSession.householdCode;
     appState.householdKey = savedSession.householdKey;
     loadBudgetData();
-    setupRealtime();
     startPolling();
     return;
   }
@@ -79,14 +73,10 @@ function renderSetupRequired() {
   elements.protectedContent.classList.add("is-hidden");
   elements.authPanel.classList.remove("is-hidden");
   elements.authForm.classList.add("is-hidden");
-  elements.authTitle.textContent = hasSupabaseConfig ? "Supabase 연결을 불러오지 못했어요" : "공유 가계부 설정이 필요해요";
-  elements.authDescription.innerHTML = hasSupabaseConfig
-    ? "인터넷 연결을 확인한 뒤 새로고침해 주세요."
-    : '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
+  elements.authTitle.textContent = "공유 가계부 설정이 필요해요";
+  elements.authDescription.innerHTML = '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
   elements.authModeStatus.textContent = "";
-  elements.authError.textContent = hasSupabaseConfig
-    ? "Supabase 스크립트가 로드되어야 공유 가계부를 사용할 수 있습니다."
-    : "설정 후 같은 코드와 PIN으로 여러 기기에서 접속할 수 있어요.";
+  elements.authError.textContent = "설정 후 같은 코드와 PIN으로 여러 기기에서 접속할 수 있어요.";
 }
 
 function renderAccessForm() {
@@ -117,8 +107,8 @@ function renderDashboard() {
 
 async function handleBudgetAccess(event) {
   event.preventDefault();
-  if (!supabase) {
-    elements.authError.textContent = "Supabase 연결을 불러오지 못했어요. 새로고침해 주세요.";
+  if (!hasSupabaseConfig) {
+    elements.authError.textContent = "Supabase 설정을 찾지 못했어요. config.js를 확인해 주세요.";
     return;
   }
 
@@ -145,7 +135,6 @@ async function handleBudgetAccess(event) {
     elements.authModeStatus.textContent = "공유 가계부 데이터를 불러오는 중...";
     const loaded = await loadBudgetData();
     if (loaded) {
-      setupRealtime();
       startPolling();
       elements.authForm.reset();
     }
@@ -162,7 +151,6 @@ async function handleBudgetAccess(event) {
 }
 
 function handleChangeBudget() {
-  teardownRealtime();
   stopPolling();
   localStorage.removeItem(SESSION_KEY);
   appState.householdCode = "";
@@ -186,7 +174,7 @@ async function loadBudgetData() {
     return false;
   }
 
-  const { data, error } = await supabase.rpc("get_shared_budget", {
+  const { data, error } = await callSupabaseRpc("get_shared_budget", {
     p_household_key: appState.householdKey
   });
 
@@ -207,35 +195,6 @@ async function loadBudgetData() {
   appState.transactions = budgetData?.transactions || [];
   renderDashboard();
   return true;
-}
-
-function setupRealtime() {
-  if (!appState.householdKey || appState.channel) {
-    return;
-  }
-
-  appState.channel = supabase
-    .channel(`budget-${appState.householdKey}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "shared_fixed_expenses", filter: `household_key=eq.${appState.householdKey}` },
-      () => loadBudgetData()
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "shared_transactions", filter: `household_key=eq.${appState.householdKey}` },
-      () => loadBudgetData()
-    )
-    .subscribe();
-}
-
-function teardownRealtime() {
-  if (!appState.channel) {
-    return;
-  }
-
-  supabase.removeChannel(appState.channel);
-  appState.channel = null;
 }
 
 function startPolling() {
@@ -270,7 +229,7 @@ async function handleFixedExpenseSubmit(event) {
     return;
   }
 
-  const { error } = await supabase.rpc("add_shared_fixed_expense", {
+  const { error } = await callSupabaseRpc("add_shared_fixed_expense", {
     p_household_key: appState.householdKey,
     p_name: name,
     p_amount: amount
@@ -304,7 +263,7 @@ async function handleTransactionSubmit(event) {
     return;
   }
 
-  const { error } = await supabase.rpc("add_shared_transaction", {
+  const { error } = await callSupabaseRpc("add_shared_transaction", {
     p_household_key: appState.householdKey,
     p_date: transaction.date,
     p_type: transaction.type,
@@ -329,7 +288,7 @@ async function handleFixedExpenseDelete(event) {
     return;
   }
 
-  const { error } = await supabase.rpc("delete_shared_fixed_expense", {
+  const { error } = await callSupabaseRpc("delete_shared_fixed_expense", {
     p_household_key: appState.householdKey,
     p_id: button.dataset.deleteId
   });
@@ -367,7 +326,7 @@ async function migrateLegacyLocalBudgetData() {
 
   for (const item of fixedExpenses) {
     if (item?.name && Number(item.amount) > 0) {
-      await supabase.rpc("add_shared_fixed_expense", {
+      await callSupabaseRpc("add_shared_fixed_expense", {
         p_household_key: appState.householdKey,
         p_name: String(item.name).trim(),
         p_amount: Number(item.amount)
@@ -377,7 +336,7 @@ async function migrateLegacyLocalBudgetData() {
 
   for (const item of transactions) {
     if (item?.date && item?.type && item?.category && Number(item.amount) > 0) {
-      await supabase.rpc("add_shared_transaction", {
+      await callSupabaseRpc("add_shared_transaction", {
         p_household_key: appState.householdKey,
         p_date: item.date,
         p_type: item.type,
@@ -674,6 +633,39 @@ function readSavedSession() {
 
 function normalizeBudgetCode(value) {
   return String(value || "").trim().replace(/\s+/g, "-").toLowerCase();
+}
+
+async function callSupabaseRpc(functionName, payload) {
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/${functionName}`, {
+    method: "POST",
+    headers: {
+      apikey: config.supabaseAnonKey,
+      Authorization: `Bearer ${config.supabaseAnonKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const responseText = await response.text();
+  let data = null;
+  if (responseText) {
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = responseText;
+    }
+  }
+
+  if (!response.ok) {
+    return {
+      data: null,
+      error: {
+        message: data?.message || data?.error_description || data?.hint || responseText || `HTTP ${response.status}`
+      }
+    };
+  }
+
+  return { data, error: null };
 }
 
 async function createHouseholdKey(householdCode, pin) {
