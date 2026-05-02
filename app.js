@@ -28,6 +28,8 @@ const elements = {
   fixedExpenseList: document.getElementById("fixedExpenseList"),
   incomeForm: document.getElementById("incomeForm"),
   expenseForm: document.getElementById("expenseForm"),
+  historyTypeFilter: document.getElementById("historyTypeFilter"),
+  historyCategoryFilter: document.getElementById("historyCategoryFilter"),
   transactionList: document.getElementById("transactionList"),
   dailyBreakdown: document.getElementById("dailyBreakdown"),
   dailyChart: document.getElementById("dailyChart"),
@@ -42,6 +44,10 @@ const appState = {
   householdKey: "",
   activeTab: "daily",
   fixedExpenses: [],
+  historyFilter: {
+    type: "all",
+    category: "all"
+  },
   transactions: [],
   pollTimer: null
 };
@@ -58,6 +64,8 @@ function initialize() {
   elements.fixedExpenseForm.addEventListener("submit", handleFixedExpenseSubmit);
   elements.incomeForm.addEventListener("submit", handleIncomeSubmit);
   elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
+  elements.historyTypeFilter.addEventListener("change", handleHistoryFilterChange);
+  elements.historyCategoryFilter.addEventListener("change", handleHistoryFilterChange);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
   elements.transactionList.addEventListener("click", handleTransactionDelete);
   elements.tabButtons.forEach((button) => {
@@ -187,6 +195,7 @@ function handleChangeBudget() {
   appState.householdCode = "";
   appState.householdKey = "";
   appState.fixedExpenses = [];
+  appState.historyFilter = { type: "all", category: "all" };
   appState.transactions = [];
   renderAccessForm();
 }
@@ -364,6 +373,12 @@ async function handleTransactionDelete(event) {
   await loadBudgetData();
 }
 
+function handleHistoryFilterChange() {
+  appState.historyFilter.type = elements.historyTypeFilter.value || "all";
+  appState.historyFilter.category = elements.historyCategoryFilter.value || "all";
+  renderTransactions();
+}
+
 async function migrateLegacyLocalBudgetData() {
   const migrationKey = `${LEGACY_MIGRATION_PREFIX}${appState.householdKey}`;
   if (!appState.householdKey || localStorage.getItem(migrationKey)) {
@@ -443,6 +458,7 @@ function renderPlaceholderDashboard(message) {
 }
 
 function render() {
+  syncHistoryFilters();
   renderSummaryCards();
   renderFixedExpenses();
   renderDailyBreakdown();
@@ -578,16 +594,21 @@ function renderDailyBreakdown() {
   `).join("");
 }
 
-function renderTransactions() {
-  const sorted = [...appState.transactions, ...getFixedExpenseOccurrencesThroughCurrentMonth()]
-    .sort((a, b) => `${b.date}${b.created_at || ""}`.localeCompare(`${a.date}${a.created_at || ""}`));
 
-  if (sorted.length === 0) {
-    elements.transactionList.innerHTML = '<div class="empty-state">아직 기록된 수입 / 지출 내역이 없어요.</div>';
+function renderTransactions() {
+  const historyEntries = getHistoryEntries();
+  renderHistoryCategoryOptions(historyEntries);
+
+  const filtered = historyEntries
+    .filter((entry) => appState.historyFilter.type === "all" || entry.type === appState.historyFilter.type)
+    .filter((entry) => appState.historyFilter.category === "all" || entry.category === appState.historyFilter.category);
+
+  if (filtered.length === 0) {
+    elements.transactionList.innerHTML = '<div class="empty-state">조건에 맞는 내역이 없습니다.</div>';
     return;
   }
 
-  const rows = sorted.slice(0, 12).map((entry) => `
+  const rows = filtered.map((entry) => `
     <tr>
       <td>${entry.date}</td>
       <td><span class="pill pill--${entry.type}">${getTypeLabel(entry.type)}</span></td>
@@ -616,6 +637,32 @@ function renderTransactions() {
       <tbody>${rows}</tbody>
     </table>
   `;
+}
+
+function renderHistoryCategoryOptions(historyEntries) {
+  const categories = [...new Set(historyEntries.map((entry) => String(entry.category || "").trim()).filter(Boolean))];
+  const currentValue = appState.historyFilter.category;
+
+  if (currentValue !== "all" && !categories.includes(currentValue)) {
+    appState.historyFilter.category = "all";
+  }
+
+  elements.historyCategoryFilter.innerHTML = [
+    '<option value="all">전체</option>',
+    ...categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
+  ].join("");
+
+  elements.historyCategoryFilter.value = appState.historyFilter.category;
+}
+
+function getHistoryEntries() {
+  return [...appState.transactions, ...getFixedExpenseOccurrencesThroughCurrentMonth()]
+    .sort((a, b) => `${b.date}${b.created_at || ""}`.localeCompare(`${a.date}${a.created_at || ""}`));
+}
+
+function syncHistoryFilters() {
+  elements.historyTypeFilter.value = appState.historyFilter.type;
+  elements.historyCategoryFilter.value = appState.historyFilter.category;
 }
 
 function renderCharts() {

@@ -503,6 +503,22 @@ select:focus {
   background: #fff;
 }
 
+.history-filters {
+  display: grid;
+  grid-template-columns: 220px 280px;
+  gap: 14px;
+  margin-bottom: 16px;
+  align-items: end;
+}
+
+.history-filters__field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 table {
   width: 100%;
   min-width: 760px;

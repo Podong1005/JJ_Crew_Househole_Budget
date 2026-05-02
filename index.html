@@ -242,6 +242,23 @@
                 <h2>전체 내역</h2>
               </div>
             </div>
+            <div class="history-filters" id="historyFilters">
+              <label class="history-filters__field">
+                <span>구분</span>
+                <select id="historyTypeFilter">
+                  <option value="all">전체</option>
+                  <option value="income">수입</option>
+                  <option value="expense">지출</option>
+                  <option value="fixed">고정비</option>
+                </select>
+              </label>
+              <label class="history-filters__field">
+                <span>카테고리</span>
+                <select id="historyCategoryFilter">
+                  <option value="all">전체</option>
+                </select>
+              </label>
+            </div>
             <div id="transactionList" class="table-card"></div>
           </div>
         </section>
@@ -253,7 +270,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260501-desktop-tabs"></script>
-  <script src="app.js?v=20260501-desktop-tabs"></script>
+  <script src="config.js?v=20260502-history-filters"></script>
+  <script src="app.js?v=20260502-history-filters"></script>
 </body>
 </html>
