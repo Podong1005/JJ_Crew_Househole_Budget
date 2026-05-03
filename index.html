@@ -12,7 +12,7 @@
       <div class="select-panel__header">
         <p class="eyebrow">Household Budget</p>
         <h1 id="authTitle">공유 가계부 입장</h1>
-        <p class="subtext" id="authDescription">두 기기에서 같은 가계부 코드와 PIN을 입력하면 같은 내역을 볼 수 있어요.</p>
+        <p class="subtext" id="authDescription">같은 가계부 코드와 PIN을 입력하면 여러 기기에서 같은 내역을 볼 수 있습니다.</p>
       </div>
 
       <form id="authForm" class="entry-form">
@@ -50,7 +50,7 @@
         </div>
       </header>
 
-      <section class="panel household-panel" id="householdPanel">
+      <section class="panel household-panel is-hidden" id="householdPanel">
         <div class="section-heading">
           <div>
             <p class="section-heading__eyebrow">Shared Budget</p>
@@ -103,8 +103,8 @@
             <div id="monthlyBreakdown" class="insight-grid"></div>
             <div class="chart-card">
               <div class="chart-legend">
-                <span><i class="legend-swatch legend-swatch--expense"></i>소비</span>
-                <span><i class="legend-swatch legend-swatch--income"></i>저축</span>
+                <span><i class="legend-swatch legend-swatch--expense"></i>지출</span>
+                <span><i class="legend-swatch legend-swatch--income"></i>수입 - 지출</span>
               </div>
               <canvas id="monthlyChart" height="300" aria-label="월별 수입 지출 그래프"></canvas>
             </div>
@@ -125,22 +125,45 @@
                 <input type="date" name="date" required>
               </label>
               <label>
-                카테고리
+                수입 구분
                 <select name="category" required>
                   <option value="">선택해 주세요</option>
-                  <option value="월급">월급</option>
+                  <option value="급여">급여</option>
+                  <option value="상여">상여</option>
+                  <option value="부수입">부수입</option>
+                  <option value="용돈">용돈</option>
+                  <option value="환급">환급</option>
+                  <option value="기타">기타</option>
                 </select>
               </label>
               <label>
+                항목명
+                <input type="text" name="name" placeholder="예: 5월 월급" required>
+              </label>
+              <label>
                 금액
-                <input type="number" name="amount" min="0" step="1" placeholder="예: 50000" required>
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 500000" required>
+              </label>
+              <label>
+                입력한 사용자
+                <input type="text" name="createdBy" placeholder="예: 남편">
               </label>
               <label class="entry-form__wide">
                 메모
                 <input type="text" name="note" placeholder="선택 사항">
               </label>
-              <button type="submit">내역 저장</button>
+              <button type="submit">수입 저장</button>
             </form>
+
+            <div class="section-block">
+              <div class="section-heading section-heading--compact">
+                <div>
+                  <p class="section-heading__eyebrow">Income History</p>
+                  <h2>등록된 수입 내역</h2>
+                </div>
+              </div>
+              <div id="incomeList" class="table-card"></div>
+            </div>
           </div>
         </section>
 
@@ -171,20 +194,38 @@
                   <option value="건강/의료">건강/의료</option>
                   <option value="미용">미용</option>
                   <option value="경조사/선물">경조사/선물</option>
-                  <option value="여행/나들이">여행/나들이</option>
+                  <option value="여행/행사">여행/행사</option>
                   <option value="기타">기타</option>
                 </select>
+              </label>
+              <label>
+                항목명
+                <input type="text" name="name" placeholder="예: 마트 장보기" required>
               </label>
               <label>
                 금액
                 <input type="number" name="amount" min="0" step="1" placeholder="예: 50000" required>
               </label>
+              <label>
+                입력한 사용자
+                <input type="text" name="createdBy" placeholder="예: 아내">
+              </label>
               <label class="entry-form__wide">
                 메모
                 <input type="text" name="note" placeholder="선택 사항">
               </label>
-              <button type="submit">내역 저장</button>
+              <button type="submit">지출 저장</button>
             </form>
+
+            <div class="section-block">
+              <div class="section-heading section-heading--compact">
+                <div>
+                  <p class="section-heading__eyebrow">Expense History</p>
+                  <h2>등록된 지출 내역</h2>
+                </div>
+              </div>
+              <div id="expenseList" class="table-card"></div>
+            </div>
           </div>
         </section>
 
@@ -202,33 +243,25 @@
                 <input type="date" name="date" required>
               </label>
               <label>
-                카테고리
-                <select name="name" required>
-                  <option value="">선택해 주세요</option>
-                  <option value="주거비">주거비</option>
-                  <option value="관리비/공과금">관리비/공과금</option>
-                  <option value="통신비">통신비</option>
-                  <option value="보험료">보험료</option>
-                  <option value="구독료">구독료</option>
-                  <option value="대출/할부">대출/할부</option>
-                  <option value="교통 고정비">교통 고정비</option>
-                  <option value="차량 유지비">차량 유지비</option>
-                  <option value="교육비">교육비</option>
-                  <option value="가족/용돈">가족/용돈</option>
-                  <option value="저축/투자">저축/투자</option>
-                  <option value="세금">세금</option>
-                  <option value="기타 고정비">기타 고정비</option>
-                </select>
+                항목명
+                <input type="text" name="name" placeholder="예: 통신비" required>
               </label>
               <label>
                 금액
-                <input type="number" name="amount" min="0" step="1" placeholder="예: 850000" required>
+                <input type="number" name="amount" min="0" step="1" placeholder="예: 80000" required>
               </label>
-              <label>
+              <div class="entry-form__field">
+                <span>자동 반영 여부</span>
+                <label class="checkbox-field">
+                  <input type="checkbox" name="autoApply" checked>
+                  <span>매월 소비에 자동 반영</span>
+                </label>
+              </div>
+              <label class="entry-form__wide">
                 메모
                 <input type="text" name="note" placeholder="선택 사항">
               </label>
-              <button type="submit">고정비 추가</button>
+              <button type="submit">고정비 저장</button>
             </form>
             <div id="fixedExpenseList" class="stack-list"></div>
           </div>
@@ -262,7 +295,6 @@
             <div id="transactionList" class="table-card"></div>
           </div>
         </section>
-
       </main>
 
       <section class="legacy-hidden" id="dashboardState"></section>
@@ -270,7 +302,7 @@
     </div>
   </div>
 
-  <script src="config.js?v=20260502-history-filters"></script>
-  <script src="app.js?v=20260502-history-filters"></script>
+  <script src="config.js?v=20260503-entry-lists"></script>
+  <script src="app.js?v=20260503-entry-lists"></script>
 </body>
 </html>

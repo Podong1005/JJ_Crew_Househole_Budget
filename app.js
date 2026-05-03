@@ -27,7 +27,9 @@ const elements = {
   fixedExpenseForm: document.getElementById("fixedExpenseForm"),
   fixedExpenseList: document.getElementById("fixedExpenseList"),
   incomeForm: document.getElementById("incomeForm"),
+  incomeList: document.getElementById("incomeList"),
   expenseForm: document.getElementById("expenseForm"),
+  expenseList: document.getElementById("expenseList"),
   historyTypeFilter: document.getElementById("historyTypeFilter"),
   historyCategoryFilter: document.getElementById("historyCategoryFilter"),
   transactionList: document.getElementById("transactionList"),
@@ -44,20 +46,18 @@ const appState = {
   householdKey: "",
   activeTab: "daily",
   fixedExpenses: [],
+  transactions: [],
   historyFilter: {
     type: "all",
     category: "all"
   },
-  transactions: [],
   pollTimer: null
 };
 
 initialize();
 
 function initialize() {
-  elements.incomeForm.querySelector('input[name="date"]').value = getTodayString();
-  elements.expenseForm.querySelector('input[name="date"]').value = getTodayString();
-  elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
+  setDefaultDates();
   elements.authForm.addEventListener("submit", handleBudgetAccess);
   elements.signOutButton.addEventListener("click", handleChangeBudget);
   elements.refreshButton.addEventListener("click", handleRefresh);
@@ -68,6 +68,8 @@ function initialize() {
   elements.historyCategoryFilter.addEventListener("change", handleHistoryFilterChange);
   elements.fixedExpenseList.addEventListener("click", handleFixedExpenseDelete);
   elements.transactionList.addEventListener("click", handleTransactionDelete);
+  elements.incomeList.addEventListener("click", handleTransactionDelete);
+  elements.expenseList.addEventListener("click", handleTransactionDelete);
   elements.tabButtons.forEach((button) => {
     button.addEventListener("click", () => setActiveTab(button.dataset.tab));
   });
@@ -101,6 +103,13 @@ function initialize() {
   renderAccessForm();
 }
 
+function setDefaultDates() {
+  const today = getTodayString();
+  elements.incomeForm.querySelector('input[name="date"]').value = today;
+  elements.expenseForm.querySelector('input[name="date"]').value = today;
+  elements.fixedExpenseForm.querySelector('input[name="date"]').value = today;
+}
+
 function renderSetupRequired() {
   elements.appShell.classList.add("page-shell--auth");
   elements.protectedContent.classList.add("is-hidden");
@@ -109,7 +118,7 @@ function renderSetupRequired() {
   elements.authTitle.textContent = "공유 가계부 설정이 필요해요";
   elements.authDescription.innerHTML = '먼저 <code>config.js</code>에 Supabase URL과 Anon Key를 넣고, <code>supabase-schema.sql</code>을 Supabase SQL Editor에서 실행해 주세요.';
   elements.authModeStatus.textContent = "";
-  elements.authError.textContent = "설정 후 같은 코드와 PIN으로 여러 기기에서 접속할 수 있어요.";
+  elements.authError.textContent = "설정이 끝나면 같은 코드와 PIN으로 여러 기기에서 함께 사용할 수 있어요.";
 }
 
 function renderAccessForm() {
@@ -118,7 +127,7 @@ function renderAccessForm() {
   elements.authPanel.classList.remove("is-hidden");
   elements.authForm.classList.remove("is-hidden");
   elements.authTitle.textContent = "공유 가계부 입장";
-  elements.authDescription.textContent = "두 기기에서 같은 가계부 코드와 PIN을 입력하면 같은 내역을 볼 수 있어요.";
+  elements.authDescription.textContent = "같은 가계부 코드와 PIN을 입력하면 여러 기기에서 같은 내역을 볼 수 있습니다.";
   elements.authSubmit.textContent = "입장";
   elements.authModeStatus.textContent = "로그인 없이 코드와 PIN으로 연결합니다.";
   elements.authError.textContent = "";
@@ -135,11 +144,13 @@ function renderDashboard() {
   elements.protectedContent.classList.remove("is-hidden");
   elements.householdPanel.classList.remove("is-hidden");
   elements.householdName.textContent = appState.householdCode || "공유 가계부";
-  elements.householdInviteCode.textContent = "PIN은 저장하지 않습니다";
+  elements.householdInviteCode.textContent = "코드 + PIN";
   elements.householdUser.textContent = appState.householdCode || "미연결";
   elements.signOutButton.textContent = "가계부 변경";
   elements.refreshButton.textContent = "새로고침";
-  elements.householdMessage.textContent = "같은 코드와 PIN을 입력한 기기끼리 같은 데이터를 공유합니다.";
+  if (!elements.householdMessage.textContent) {
+    elements.householdMessage.textContent = "같은 코드와 PIN을 입력한 기기끼리 같은 데이터를 공유합니다.";
+  }
   setActiveTab(appState.activeTab);
   render();
 }
@@ -147,7 +158,7 @@ function renderDashboard() {
 async function handleBudgetAccess(event) {
   event.preventDefault();
   if (!hasSupabaseConfig) {
-    elements.authError.textContent = "Supabase 설정을 찾지 못했어요. config.js를 확인해 주세요.";
+    elements.authError.textContent = "Supabase 설정을 찾지 못했습니다. config.js를 확인해 주세요.";
     return;
   }
 
@@ -156,7 +167,7 @@ async function handleBudgetAccess(event) {
   const pin = String(formData.get("budgetPin") || "").trim();
 
   if (!householdCode || pin.length < 4) {
-    elements.authError.textContent = "가계부 코드와 4자리 이상의 PIN을 입력해 주세요.";
+    elements.authError.textContent = "가계부 코드와 4자리 이상 PIN을 입력해 주세요.";
     return;
   }
 
@@ -176,6 +187,7 @@ async function handleBudgetAccess(event) {
     if (loaded) {
       startPolling();
       elements.authForm.reset();
+      setDefaultDates();
     }
   } catch (error) {
     appState.householdCode = "";
@@ -195,8 +207,8 @@ function handleChangeBudget() {
   appState.householdCode = "";
   appState.householdKey = "";
   appState.fixedExpenses = [];
-  appState.historyFilter = { type: "all", category: "all" };
   appState.transactions = [];
+  appState.historyFilter = { type: "all", category: "all" };
   renderAccessForm();
 }
 
@@ -204,7 +216,6 @@ async function handleRefresh() {
   if (!appState.householdKey) {
     return;
   }
-
   await loadBudgetData();
 }
 
@@ -231,8 +242,9 @@ async function loadBudgetData() {
   }
 
   const budgetData = typeof data === "string" ? JSON.parse(data) : data;
-  appState.fixedExpenses = budgetData?.fixed_expenses || [];
-  appState.transactions = budgetData?.transactions || [];
+  appState.fixedExpenses = Array.isArray(budgetData?.fixed_expenses) ? budgetData.fixed_expenses : [];
+  appState.transactions = Array.isArray(budgetData?.transactions) ? budgetData.transactions : [];
+  elements.householdMessage.textContent = "";
   renderDashboard();
   return true;
 }
@@ -250,7 +262,6 @@ function stopPolling() {
   if (!appState.pollTimer) {
     return;
   }
-
   window.clearInterval(appState.pollTimer);
   appState.pollTimer = null;
 }
@@ -262,21 +273,25 @@ async function handleFixedExpenseSubmit(event) {
   }
 
   const formData = new FormData(event.currentTarget);
-  const date = String(formData.get("date") || "");
-  const name = String(formData.get("name") || "").trim();
-  const amount = Number(formData.get("amount"));
-  const note = String(formData.get("note") || "").trim();
+  const payload = {
+    date: String(formData.get("date") || ""),
+    name: String(formData.get("name") || "").trim(),
+    amount: Number(formData.get("amount")),
+    note: String(formData.get("note") || "").trim(),
+    autoApply: formData.get("autoApply") === "on"
+  };
 
-  if (!date || !name || amount <= 0) {
+  if (!payload.date || !payload.name || payload.amount <= 0) {
     return;
   }
 
   const { error } = await callSupabaseRpc("add_shared_fixed_expense", {
     p_household_key: appState.householdKey,
-    p_date: date,
-    p_name: name,
-    p_amount: amount,
-    p_note: note
+    p_date: payload.date,
+    p_name: payload.name,
+    p_amount: payload.amount,
+    p_note: payload.note,
+    p_auto_apply: payload.autoApply
   });
 
   if (error) {
@@ -286,6 +301,7 @@ async function handleFixedExpenseSubmit(event) {
 
   event.currentTarget.reset();
   elements.fixedExpenseForm.querySelector('input[name="date"]').value = getTodayString();
+  elements.fixedExpenseForm.querySelector('input[name="autoApply"]').checked = true;
   await loadBudgetData();
 }
 
@@ -308,11 +324,13 @@ async function handleTransactionSubmit(event, type, formElement) {
     date: String(formData.get("date") || ""),
     type,
     category: String(formData.get("category") || "").trim(),
+    name: String(formData.get("name") || "").trim(),
     amount: Number(formData.get("amount")),
+    createdBy: String(formData.get("createdBy") || "").trim(),
     note: String(formData.get("note") || "").trim()
   };
 
-  if (!transaction.date || !transaction.category || transaction.amount <= 0) {
+  if (!transaction.date || !transaction.category || !transaction.name || transaction.amount <= 0) {
     return;
   }
 
@@ -321,7 +339,9 @@ async function handleTransactionSubmit(event, type, formElement) {
     p_date: transaction.date,
     p_type: transaction.type,
     p_category: transaction.category,
+    p_name: transaction.name,
     p_amount: transaction.amount,
+    p_created_by: transaction.createdBy,
     p_note: transaction.note
   });
 
@@ -409,7 +429,8 @@ async function migrateLegacyLocalBudgetData() {
         p_date: item.date || getTodayString(),
         p_name: String(item.name).trim(),
         p_amount: Number(item.amount),
-        p_note: item.note || ""
+        p_note: item.note || "",
+        p_auto_apply: item.autoApply !== false
       });
     }
   }
@@ -421,8 +442,10 @@ async function migrateLegacyLocalBudgetData() {
         p_date: item.date,
         p_type: item.type,
         p_category: String(item.category).trim(),
+        p_name: String(item.name || item.category).trim(),
         p_amount: Number(item.amount),
-        p_note: [item.note, item.createdBy ? `작성자: ${item.createdBy}` : ""].filter(Boolean).join(" / ")
+        p_created_by: item.createdBy || "",
+        p_note: item.note || ""
       });
     }
   }
@@ -439,6 +462,9 @@ function renderPlaceholderDashboard(message) {
     </article>
   `;
   elements.fixedExpenseList.innerHTML = '<div class="empty-state">고정비 목록은 연결 후 표시됩니다.</div>';
+  elements.incomeList.innerHTML = '<div class="empty-state">수입 내역은 연결 후 표시됩니다.</div>';
+  elements.expenseList.innerHTML = '<div class="empty-state">지출 내역은 연결 후 표시됩니다.</div>';
+  elements.transactionList.innerHTML = '<div class="empty-state">전체 내역은 연결 후 표시됩니다.</div>';
   elements.monthlyBreakdown.innerHTML = `
     <article class="insight-card">
       <h3>안내</h3>
@@ -446,7 +472,6 @@ function renderPlaceholderDashboard(message) {
       <p class="subtext">${escapeHtml(message)}</p>
     </article>
   `;
-  elements.transactionList.innerHTML = '<div class="empty-state">최근 거래 내역은 연결 후 표시됩니다.</div>';
   elements.dailyBreakdown.innerHTML = `
     <article class="insight-card">
       <h3>안내</h3>
@@ -461,6 +486,8 @@ function render() {
   syncHistoryFilters();
   renderSummaryCards();
   renderFixedExpenses();
+  renderIncomeEntries();
+  renderExpenseEntries();
   renderDailyBreakdown();
   renderMonthlyBreakdown();
   renderTransactions();
@@ -496,13 +523,13 @@ function renderSummaryCards() {
       subtext: "이번 달에 기록된 모든 수입 합계"
     },
     {
-      title: "이번 달 소비",
+      title: "이번 달 지출",
       value: formatCurrency(monthly.expense + fixedTotal),
       className: "amount amount--expense",
       subtext: `고정비 ${formatCurrency(fixedTotal)} 포함`
     },
     {
-      title: "예상 저축",
+      title: "예상 잔액",
       value: formatCurrency(monthly.savings),
       className: `amount ${monthly.savings >= 0 ? "amount--saving" : "amount--expense"}`,
       subtext: `저축률 ${savingsRate}%`
@@ -524,13 +551,17 @@ function renderFixedExpenses() {
     return;
   }
 
-  elements.fixedExpenseList.innerHTML = [...appState.fixedExpenses]
-    .sort((a, b) => `${b.date || ""}${b.created_at || ""}`.localeCompare(`${a.date || ""}${a.created_at || ""}`))
-    .map((item) => `
+  const rows = sortByDateDesc(appState.fixedExpenses, "date").map((item) => {
+    const autoApplyLabel = item.auto_apply === false ? "자동 반영 안 함" : "매월 자동 반영";
+    const autoApplyClass = item.auto_apply === false ? "pill pill--muted" : "pill pill--fixed";
+    return `
       <article class="fixed-item">
         <div class="fixed-item__meta">
-          <h3>${escapeHtml(item.name)}</h3>
-          <p>${escapeHtml(item.date || "-")}부터 매월 반복</p>
+          <div class="inline-pills">
+            <h3>${escapeHtml(item.name)}</h3>
+            <span class="${autoApplyClass}">${autoApplyLabel}</span>
+          </div>
+          <p>${escapeHtml(item.date || "-")} 기준</p>
           ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
         </div>
         <div class="fixed-item__actions">
@@ -538,32 +569,82 @@ function renderFixedExpenses() {
           <button type="button" data-delete-id="${item.id}">삭제</button>
         </div>
       </article>
-    `).join("");
+    `;
+  }).join("");
+
+  elements.fixedExpenseList.innerHTML = rows;
 }
 
-function renderMonthlyBreakdown() {
-  const current = getCurrentMonthSummary();
-  const fixedTotal = getFixedExpenseTotalForMonth(getCurrentMonthKey());
-  const discretionary = current.expense;
-  const totalExpense = discretionary + fixedTotal;
-  const average = getMonthlyAverageExpense();
+function renderIncomeEntries() {
+  const incomes = getTransactionsByType("income");
+  if (incomes.length === 0) {
+    elements.incomeList.innerHTML = '<div class="empty-state">아직 등록된 수입 내역이 없어요.</div>';
+    return;
+  }
 
-  const cards = [
-    { title: "고정비 합계", value: formatCurrency(fixedTotal), helper: "매달 반복 비용" },
-    { title: "변동 지출", value: formatCurrency(discretionary), helper: "식비, 교통, 쇼핑 등" },
-    { title: "월 평균 소비", value: formatCurrency(average), helper: "최근 기록 기준" },
-    { title: "총 소비", value: formatCurrency(totalExpense), helper: "고정비 + 변동 지출" },
-    { title: "총 수입", value: formatCurrency(current.income), helper: "이번 달 수입 합계" },
-    { title: "남은 저축 여력", value: formatCurrency(current.savings), helper: "수입 - 총 소비" }
-  ];
-
-  elements.monthlyBreakdown.innerHTML = cards.map((card) => `
-    <article class="insight-card">
-      <h3>${card.title}</h3>
-      <div class="amount">${card.value}</div>
-      <p class="subtext">${card.helper}</p>
-    </article>
+  const rows = incomes.map((entry) => `
+    <tr>
+      <td>${escapeHtml(entry.date)}</td>
+      <td>${escapeHtml(entry.name || "-")}</td>
+      <td>${escapeHtml(entry.created_by || "-")}</td>
+      <td>${escapeHtml(entry.note || "-")}</td>
+      <td class="amount amount--income">${formatCurrency(entry.amount)}</td>
+      <td><button type="button" class="danger-button" data-transaction-delete-id="${entry.id}">삭제</button></td>
+    </tr>
   `).join("");
+
+  elements.incomeList.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>항목명</th>
+          <th>입력한 사용자</th>
+          <th>메모</th>
+          <th>금액</th>
+          <th>관리</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderExpenseEntries() {
+  const expenses = getTransactionsByType("expense");
+  if (expenses.length === 0) {
+    elements.expenseList.innerHTML = '<div class="empty-state">아직 등록된 지출 내역이 없어요.</div>';
+    return;
+  }
+
+  const rows = expenses.map((entry) => `
+    <tr>
+      <td>${escapeHtml(entry.date)}</td>
+      <td>${escapeHtml(entry.category)}</td>
+      <td>${escapeHtml(entry.name || "-")}</td>
+      <td>${escapeHtml(entry.created_by || "-")}</td>
+      <td>${escapeHtml(entry.note || "-")}</td>
+      <td class="amount amount--expense">${formatCurrency(entry.amount)}</td>
+      <td><button type="button" class="danger-button" data-transaction-delete-id="${entry.id}">삭제</button></td>
+    </tr>
+  `).join("");
+
+  elements.expenseList.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>카테고리</th>
+          <th>항목명</th>
+          <th>입력한 사용자</th>
+          <th>메모</th>
+          <th>금액</th>
+          <th>관리</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 function renderDailyBreakdown() {
@@ -575,14 +656,14 @@ function renderDailyBreakdown() {
   const expense = todayTransactions
     .filter((entry) => entry.type === "expense")
     .reduce((sum, entry) => sum + Number(entry.amount), 0);
-  const todayFixed = getFixedExpenseDailyEstimate();
+  const todayFixed = getFixedExpenseTotalForDate(today);
   const net = income - (expense + todayFixed);
 
   const cards = [
     { title: "오늘 수입", value: formatCurrency(income), helper: "오늘 기록된 수입" },
     { title: "오늘 지출", value: formatCurrency(expense), helper: "오늘 기록된 변동 지출" },
-    { title: "고정비 일할", value: formatCurrency(todayFixed), helper: "월 고정비를 일 단위로 환산" },
-    { title: "오늘 잔액", value: formatCurrency(net), helper: "수입 - 지출 - 일할 고정비" }
+    { title: "오늘 고정비", value: formatCurrency(todayFixed), helper: "오늘 날짜에 반영되는 고정비" },
+    { title: "오늘 잔액", value: formatCurrency(net), helper: "수입 - 지출 - 고정비" }
   ];
 
   elements.dailyBreakdown.innerHTML = cards.map((card) => `
@@ -594,6 +675,30 @@ function renderDailyBreakdown() {
   `).join("");
 }
 
+function renderMonthlyBreakdown() {
+  const current = getCurrentMonthSummary();
+  const fixedTotal = getFixedExpenseTotalForMonth(getCurrentMonthKey());
+  const discretionary = current.expense;
+  const totalExpense = discretionary + fixedTotal;
+  const average = getMonthlyAverageExpense();
+
+  const cards = [
+    { title: "고정비 합계", value: formatCurrency(fixedTotal), helper: "자동 반영 대상만 포함" },
+    { title: "변동 지출", value: formatCurrency(discretionary), helper: "식비, 교통, 쇼핑 등" },
+    { title: "월 평균 지출", value: formatCurrency(average), helper: "최근 6개월 기준" },
+    { title: "총 지출", value: formatCurrency(totalExpense), helper: "고정비 + 변동 지출" },
+    { title: "총 수입", value: formatCurrency(current.income), helper: "이번 달 수입 합계" },
+    { title: "예상 잔액", value: formatCurrency(current.savings), helper: "수입 - 총 지출" }
+  ];
+
+  elements.monthlyBreakdown.innerHTML = cards.map((card) => `
+    <article class="insight-card">
+      <h3>${card.title}</h3>
+      <div class="amount">${card.value}</div>
+      <p class="subtext">${card.helper}</p>
+    </article>
+  `).join("");
+}
 
 function renderTransactions() {
   const historyEntries = getHistoryEntries();
@@ -610,9 +715,11 @@ function renderTransactions() {
 
   const rows = filtered.map((entry) => `
     <tr>
-      <td>${entry.date}</td>
+      <td>${escapeHtml(entry.date)}</td>
       <td><span class="pill pill--${entry.type}">${getTypeLabel(entry.type)}</span></td>
-      <td>${escapeHtml(entry.category)}</td>
+      <td>${escapeHtml(entry.category || "-")}</td>
+      <td>${escapeHtml(entry.name || "-")}</td>
+      <td>${escapeHtml(entry.created_by || "-")}</td>
       <td>${escapeHtml(entry.note || "-")}</td>
       <td class="amount ${entry.type === "income" ? "amount--income" : "amount--expense"}">${formatCurrency(entry.amount)}</td>
       <td>${entry.type === "fixed"
@@ -629,6 +736,8 @@ function renderTransactions() {
           <th>날짜</th>
           <th>구분</th>
           <th>카테고리</th>
+          <th>항목명</th>
+          <th>입력한 사용자</th>
           <th>메모</th>
           <th>금액</th>
           <th>관리</th>
@@ -651,13 +760,7 @@ function renderHistoryCategoryOptions(historyEntries) {
     '<option value="all">전체</option>',
     ...categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`)
   ].join("");
-
   elements.historyCategoryFilter.value = appState.historyFilter.category;
-}
-
-function getHistoryEntries() {
-  return [...appState.transactions, ...getFixedExpenseOccurrencesThroughCurrentMonth()]
-    .sort((a, b) => `${b.date}${b.created_at || ""}`.localeCompare(`${a.date}${a.created_at || ""}`));
 }
 
 function syncHistoryFilters() {
@@ -770,26 +873,37 @@ function renderDailyChart() {
   const drawHeight = canvas.clientHeight;
   context.clearRect(0, 0, drawWidth, drawHeight);
 
-  const padding = { top: 20, right: 24, bottom: 36, left: 24 };
+  const isCompact = drawWidth < 640;
+  const padding = { top: 20, right: 18, bottom: 36, left: isCompact ? 72 : 92 };
   const chartHeight = drawHeight - padding.top - padding.bottom;
-  const columnWidth = (drawWidth - padding.left - padding.right) / Math.max(chartData.length, 1);
+  const chartWidth = drawWidth - padding.left - padding.right;
+  const columnWidth = chartWidth / Math.max(chartData.length, 1);
   const baseline = padding.top + chartHeight;
-  const barWidth = Math.min(12, columnWidth * 0.28);
+  const barWidth = Math.min(isCompact ? 8 : 12, columnWidth * 0.28);
+  const tickCount = 3;
 
   context.strokeStyle = "rgba(84, 96, 112, 0.14)";
   context.lineWidth = 1;
-  for (let i = 0; i < 4; i += 1) {
-    const y = padding.top + (chartHeight / 3) * i;
+  context.font = isCompact ? '10px "Segoe UI", "Malgun Gothic", sans-serif' : '11px "Segoe UI", "Malgun Gothic", sans-serif';
+  context.fillStyle = "#667085";
+  context.textAlign = "right";
+  context.textBaseline = "middle";
+
+  for (let i = 0; i <= tickCount; i += 1) {
+    const ratio = i / tickCount;
+    const value = maxValue * (1 - ratio);
+    const y = padding.top + chartHeight * ratio;
     context.beginPath();
     context.moveTo(padding.left, y);
     context.lineTo(drawWidth - padding.right, y);
     context.stroke();
+    context.fillText(formatAxisCurrency(value), padding.left - 10, y);
   }
 
   chartData.forEach((item, index) => {
     const baseX = padding.left + index * columnWidth;
-    const incomeHeight = (incomes[index] / maxValue) * chartHeight;
-    const expenseHeight = (expenses[index] / maxValue) * chartHeight;
+    const incomeHeight = maxValue === 0 ? 0 : (incomes[index] / maxValue) * chartHeight;
+    const expenseHeight = maxValue === 0 ? 0 : (expenses[index] / maxValue) * chartHeight;
 
     context.fillStyle = "#2563eb";
     roundRect(context, baseX + columnWidth * 0.22, baseline - incomeHeight, barWidth, incomeHeight, 6);
@@ -797,10 +911,11 @@ function renderDailyChart() {
     context.fillStyle = "#dc2626";
     roundRect(context, baseX + columnWidth * 0.55, baseline - expenseHeight, barWidth, expenseHeight, 6);
 
-    if (index % Math.ceil(chartData.length / 12) === 0 || index === chartData.length - 1) {
+    if (index % Math.max(1, Math.ceil(chartData.length / (isCompact ? 8 : 12))) === 0 || index === chartData.length - 1) {
       context.fillStyle = "#667085";
       context.font = '11px "Segoe UI", "Malgun Gothic", sans-serif';
       context.textAlign = "center";
+      context.textBaseline = "alphabetic";
       context.fillText(item.label, baseX + columnWidth * 0.5, drawHeight - 12);
     }
   });
@@ -878,6 +993,20 @@ function getDailyTrend() {
   return days;
 }
 
+function getTransactionsByType(type) {
+  return sortByDateDesc(
+    appState.transactions.filter((entry) => entry.type === type),
+    "date"
+  );
+}
+
+function getHistoryEntries() {
+  return sortByDateDesc(
+    [...appState.transactions, ...getFixedExpenseOccurrencesThroughCurrentMonth()],
+    "date"
+  );
+}
+
 function getFixedExpenseTotalForMonth(monthKey) {
   return appState.fixedExpenses
     .filter((item) => shouldApplyFixedExpenseToMonth(item, monthKey))
@@ -895,7 +1024,7 @@ function getFixedExpenseOccurrencesThroughCurrentMonth() {
   const currentMonthKey = getCurrentMonthKey();
 
   appState.fixedExpenses.forEach((item) => {
-    if (!isValidDateString(item.date)) {
+    if (!shouldAutoApplyFixedExpense(item) || !isValidDateString(item.date)) {
       return;
     }
 
@@ -915,8 +1044,12 @@ function getFixedExpenseOccurrencesForMonth(monthKey) {
     .map((item) => createFixedExpenseOccurrence(item, monthKey));
 }
 
+function shouldAutoApplyFixedExpense(item) {
+  return item.auto_apply !== false;
+}
+
 function shouldApplyFixedExpenseToMonth(item, monthKey) {
-  return isValidDateString(item.date) && item.date.slice(0, 7) <= monthKey;
+  return shouldAutoApplyFixedExpense(item) && isValidDateString(item.date) && item.date.slice(0, 7) <= monthKey;
 }
 
 function createFixedExpenseOccurrence(item, monthKey) {
@@ -927,19 +1060,12 @@ function createFixedExpenseOccurrence(item, monthKey) {
     date: `${monthKey}-${String(occurrenceDay).padStart(2, "0")}`,
     type: "fixed",
     category: item.name,
+    name: item.name,
     amount: Number(item.amount),
+    created_by: "자동 반영",
     note: item.note || "매월 반복 고정비",
     created_at: item.created_at || item.date
   };
-}
-
-function getFixedExpenseDailyEstimate() {
-  const monthKey = getCurrentMonthKey();
-  const [, month] = monthKey.split("-").map(Number);
-  const year = Number(monthKey.slice(0, 4));
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const fixedTotal = getFixedExpenseTotalForMonth(monthKey);
-  return fixedTotal / daysInMonth;
 }
 
 function getNextMonthKey(monthKey) {
@@ -965,6 +1091,14 @@ function getTypeLabel(type) {
     return "고정비";
   }
   return "지출";
+}
+
+function sortByDateDesc(items, dateKey) {
+  return [...items].sort((a, b) => {
+    const aValue = `${a[dateKey] || ""}${a.created_at || ""}`;
+    const bValue = `${b[dateKey] || ""}${b.created_at || ""}`;
+    return bValue.localeCompare(aValue);
+  });
 }
 
 function readSavedSession() {
@@ -1038,7 +1172,7 @@ function getCurrentMonthKey() {
 }
 
 function roundRect(context, x, y, width, height, radius) {
-  if (height <= 0) {
+  if (height <= 0 || width <= 0) {
     return;
   }
 
@@ -1056,11 +1190,11 @@ function roundRect(context, x, y, width, height, radius) {
 }
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency: "KRW",
-    maximumFractionDigits: 0
-  }).format(Number(value) || 0);
+  return `${Math.round(Number(value) || 0).toLocaleString("ko-KR")}원`;
+}
+
+function formatAxisCurrency(value) {
+  return `${Math.round(Number(value) || 0).toLocaleString("ko-KR")}원`;
 }
 
 function getTodayString() {
